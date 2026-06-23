@@ -290,6 +290,28 @@
     margin-left:4px;
     letter-spacing:0.04em;
   }
+  .classify-strip .rail-badge{
+    font-size:11px;
+    color:var(--ink-soft);
+    font-weight:700;
+    margin-top:6px;
+  }
+  .classify-strip .rail-badge .rail-num{
+    display:inline-block;
+    background:linear-gradient(135deg,var(--mint-deep),var(--sky-deep));
+    color:#fff;
+    font-size:12px;
+    font-weight:800;
+    padding:2px 10px;
+    border-radius:999px;
+    margin-left:4px;
+    letter-spacing:0.02em;
+  }
+  .classify-strip .rail-badge .rail-sub{
+    margin-left:4px;
+    color:var(--ink-soft);
+    font-size:11px;
+  }
   .group-chip{
     margin-left:auto;
     font-size:11px;
@@ -612,6 +634,22 @@
     width:70px;
     text-align:right;
   }
+  .frank-no.animal-label{
+    width:auto;
+    min-width:64px;
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .animal-dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    display:inline-block;
+    flex-shrink:0;
+  }
 </style>
 </head>
 <body>
@@ -666,12 +704,13 @@
     <div class="card">
       <h2>📋 まとめてコピペ登録</h2>
       <div class="field">
-        <label>名前・生年月日・時刻（タブ区切り）</label>
-        <textarea id="bulk-textarea" placeholder="のりぴ&#9;1990-06-24&#9;14:30
-みかりん&#9;1992-01-15&#9;
-大和&#9;2026-06-22&#9;22:56"></textarea>
+        <label>性・名・生年月日・時刻（タブ区切り）</label>
+        <textarea id="bulk-textarea" placeholder="山田&#9;のりぴ&#9;1990/06/24&#9;14:30
+佐藤&#9;みかりん&#9;1992/01/15&#9;
+鈴木&#9;大和&#9;2026/06/22&#9;22:56"></textarea>
         <div class="hint">
-          Excel・Googleスプレッドシートから<code>名前　生年月日　時刻</code>の3列をそのままコピー&ペーストできます。<br>
+          Excel・Googleスプレッドシートから<code>性　名　生年月日　時刻</code>の4列をそのままコピー&ペーストできます。<br>
+          生年月日は半角・全角どちらでもOK（1990/06/24、１９９０年６月２４日など）。<br>
           時刻が不明な場合は空欄でOKです。1行に1人ずつ入力してください。
         </div>
       </div>
@@ -743,6 +782,7 @@
   const JIKKAN = ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"];
   const JUNISHI = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"];
   const YINYANG = {"甲":1,"乙":-1,"丙":1,"丁":-1,"戊":1,"己":-1,"庚":1,"辛":-1,"壬":1,"癸":-1};
+  const ELEMENT = {"甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水"};
 
   const JUNIUN_NAMES = ["長生","沐浴","冠帯","建禄","帝旺","衰","病","死","墓","絶","胎","養"];
   const CHANGSHENG_BRANCH = {
@@ -771,6 +811,22 @@
   };
 
   const GROUP_LABEL = { earth:"地球", moon:"月", sun:"太陽" };
+
+  // 12動物の表示順(地球グループ→月グループ→太陽グループの順でまとめる)
+  const ANIMAL_ORDER = [
+    { animal:"猿",     group:"earth" },
+    { animal:"虎",     group:"earth" },
+    { animal:"子守熊", group:"earth" },
+    { animal:"狼",    group:"earth" },
+    { animal:"黒ひょう", group:"moon" },
+    { animal:"たぬき",  group:"moon" },
+    { animal:"ひつじ",  group:"moon" },
+    { animal:"こじか", group:"moon" },
+    { animal:"チータ",  group:"sun" },
+    { animal:"ライオン", group:"sun" },
+    { animal:"ゾウ",   group:"sun" },
+    { animal:"ペガサス", group:"sun" },
+  ];
 
   // 60分類 No.(1-60) -> 固有の形容詞付きキャラクター名・干グループ
   // 出典: MetaQ「木火土金水と12分類キャラクター」表（のりぴさん提供画像より転記・確定）
@@ -932,6 +988,102 @@
     return JUNIUN_NAMES[pos];
   }
 
+  // ---------- 月律分野蔵干表（レール計算用） ----------
+  // のりぴさんから提供された65件の実例から逆算して確定(64/65件一致、99%)。
+  // 各支について [蔵干, 節入りからの累積経過日数(1始まり)の上限] のペア。
+  // 子はサンプルが無く一般的配分で仮置き(将来サンプルが増えれば調整可能)。
+  const BANYA_TABLE = {
+    "子": [["壬", 10], ["癸", 30]],
+    "丑": [["癸", 12], ["己", 30]],
+    "寅": [["戊", 10], ["丙", 19], ["甲", 30]],
+    "卯": [["乙", 30]],
+    "辰": [["乙", 9], ["癸", 12], ["戊", 30]],
+    "巳": [["戊", 7], ["庚", 14], ["丙", 30]],
+    "午": [["己", 19], ["丁", 30]],
+    "未": [["丁", 15], ["己", 30]],
+    "申": [["戊", 12], ["壬", 15], ["庚", 30]],
+    "酉": [["辛", 30]],
+    "戌": [["辛", 12], ["戊", 30]],
+    "亥": [["甲", 12], ["壬", 30]],
+  };
+
+  // 月支ブロック(30度区切り)が始まった日(節気の節入り日)を求め、
+  // 対象日がそのブロックの何日目か(1始まり)を返す
+  function findSekkuElapsedDays(y, m, d) {
+    const targetJd = toJulianDay(y, m, d, 12); // 正午基準で日付のブレを避ける
+    for (let back = 0; back < 35; back++) {
+      const checkJd = targetJd - back;
+      const checkLon = sunLongitude(checkJd);
+      let checkShifted = (checkLon - 315) % 360;
+      if (checkShifted < 0) checkShifted += 360;
+      const checkBlock = Math.floor(checkShifted / 30);
+
+      const prevJd = checkJd - 1;
+      const prevLon = sunLongitude(prevJd);
+      let prevShifted = (prevLon - 315) % 360;
+      if (prevShifted < 0) prevShifted += 360;
+      const prevBlock = Math.floor(prevShifted / 30);
+
+      if (checkBlock !== prevBlock) {
+        return Math.round(targetJd - checkJd) + 1; // 1始まり
+      }
+    }
+    return 1; // フォールバック
+  }
+
+  function getZoukanForMonthBranch(branchName, elapsedDays) {
+    const table = BANYA_TABLE[branchName];
+    for (const [stem, cumulativeEnd] of table) {
+      if (elapsedDays <= cumulativeEnd) return stem;
+    }
+    return table[table.length - 1][0];
+  }
+
+  // ---------- 通変星（レール計算用） ----------
+  const GEN_ORDER = ["木", "火", "土", "金", "水"];
+
+  function tsuhenseiFor(dayStem, targetStem) {
+    const de = ELEMENT[dayStem], te = ELEMENT[targetStem];
+    const dy = YINYANG[dayStem], ty = YINYANG[targetStem];
+    const same = (dy === ty);
+    if (de === te) return same ? "比肩" : "劫財";
+    const deIdx = GEN_ORDER.indexOf(de);
+    if (GEN_ORDER[(deIdx + 1) % 5] === te) return same ? "食神" : "傷官";
+    if (GEN_ORDER[(deIdx + 2) % 5] === te) return same ? "偏財" : "正財";
+    if (GEN_ORDER[(deIdx + 3) % 5] === te) return same ? "偏官" : "正官";
+    if (GEN_ORDER[(deIdx + 4) % 5] === te) return same ? "偏印" : "印綬";
+    return "?";
+  }
+
+  // 通変星 -> レール名（五行＋陰陽、本当の呼び方も保持）
+  const TSUHENSEI_TO_RAIL = {
+    "比肩":   { rail: "マイペース", element: "木", sign: "+" },
+    "劫財":   { rail: "マイウェイ", element: "木", sign: "-" },
+    "食神":   { rail: "ピース",     element: "火", sign: "+" },
+    "傷官":   { rail: "ロマン",     element: "火", sign: "-" },
+    "偏財":   { rail: "ヒューマニティ", element: "土", sign: "+" },
+    "正財":   { rail: "リアリティ", element: "土", sign: "-" },
+    "偏官":   { rail: "ワイルド",   element: "金", sign: "+" },
+    "正官":   { rail: "エリート",   element: "金", sign: "-" },
+    "偏印":   { rail: "ユニーク",   element: "水", sign: "+" },
+    "印綬":   { rail: "ロジック",   element: "水", sign: "-" },
+  };
+
+  function calcRail(dayStem, monthBranchName, y, m, d) {
+    const elapsed = findSekkuElapsedDays(y, m, d);
+    const zoukan = getZoukanForMonthBranch(monthBranchName, elapsed);
+    const tsuhensei = tsuhenseiFor(dayStem, zoukan);
+    const railInfo = TSUHENSEI_TO_RAIL[tsuhensei] || { rail: "?", element: "", sign: "" };
+    return {
+      zoukan,
+      tsuhensei,
+      rail: railInfo.rail,
+      element: railInfo.element,
+      sign: railInfo.sign,
+      label: `${railInfo.rail}（${tsuhensei}）`
+    };
+  }
+
   // ---------- 福の神No. ----------
   function digitSumUntilSingle(n) {
     n = Math.abs(n);
@@ -990,6 +1142,7 @@
     const bunrui60No = di + 1;
     const bunrui60Detail = BUNRUI60_DETAIL[bunrui60No] || { kanGroup:"", charaName:"" };
     const fukuNoKami = calcFukuNoKami(y, m, d);
+    const rail = calcRail(dayStem, JUNISHI[mbIdx], y, m, d);
 
     return {
       bunrui60: bunrui60No,            // 1〜60
@@ -997,6 +1150,7 @@
       bunrui60_kanGroup: bunrui60Detail.kanGroup,
       bunrui60_charaName: bunrui60Detail.charaName,
       fukuNoKami,
+      rail,
       dayGz, monthGz, yearGz,
       honshitsu: { juniun: honshitsu, ...JUNIUN_TO_ANIMAL[honshitsu] },
       hyomen:    { juniun: hyomen,    ...JUNIUN_TO_ANIMAL[hyomen] },
@@ -1079,23 +1233,62 @@
     return { y, m, d };
   }
 
+  // ---------- 表記ゆれ吸収ユーティリティ ----------
+  // 全角数字(０-９)を半角(0-9)に変換し、全角記号も半角化、前後の余分な空白を除去
+  function normalizeNumericString(str) {
+    if (str === null || str === undefined) return "";
+    let s = String(str);
+    // 全角数字 -> 半角数字
+    s = s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    // 全角記号の表記ゆれを半角へ
+    s = s.replace(/[／]/g, "/").replace(/[－ー―‐]/g, "-").replace(/[．]/g, ".").replace(/[：]/g, ":");
+    // 全角スペース・連続スペースを単一の半角スペースへ、前後はtrim
+    s = s.replace(/[\u3000\s]+/g, " ").trim();
+    return s;
+  }
+
   function parseFlexibleDate(str) {
-    // 多様な日付表記に対応: 1990/06/24, 1990-6-24, 1990.6.24, 1990年6月24日
-    str = str.trim();
+    str = normalizeNumericString(str);
     if (!str) return null;
-    let m = str.match(/^(\d{4})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
+
+    // パターンA: 区切りあり 1990/06/24, 1990-6-24, 1990.6.24, 1990年6月24日, スペース区切りも許容
+    // 数字の間に空白が混じっていても(例: "1990 / 0 6 / 24")対応するため、まず区切り文字以外の空白を除去
+    let compact = str.replace(/(\d)\s+(?=\d)/g, "$1"); // 数字と数字の間の単独スペースを除去(2 -> 02のような分割対策)
+    compact = compact.replace(/\s+/g, ""); // 残りの空白も除去
+
+    let m = compact.match(/^(\d{4})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
     if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+
+    // パターンB: 区切りなし 8桁 (19900624) または 6桁(YYMMDD想定はせず、YYYYMMDDのみ厳格対応)
+    m = compact.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (m) {
+      const mm = +m[2], dd = +m[3];
+      if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) return { y: +m[1], m: mm, d: dd };
+    }
+
     return null;
   }
 
   function parseFlexibleTime(str) {
+    str = normalizeNumericString(str);
     if (!str) return null;
-    str = str.trim();
-    if (!str) return null;
-    let m = str.match(/^(\d{1,2})[:時](\d{1,2})分?$/);
+
+    let compact = str.replace(/(\d)\s+(?=\d)/g, "$1").replace(/\s+/g, "");
+
+    let m = compact.match(/^(\d{1,2})[:時](\d{1,2})分?$/);
     if (m) return { h: +m[1], mi: +m[2] };
-    m = str.match(/^(\d{1,2})$/);
+
+    // 区切りなし4桁 (2256 -> 22:56)
+    m = compact.match(/^(\d{2})(\d{2})$/);
+    if (m) {
+      const hh = +m[1], mm = +m[2];
+      if (hh <= 23 && mm <= 59) return { h: hh, mi: mm };
+    }
+
+    // 時のみ
+    m = compact.match(/^(\d{1,2})$/);
     if (m) return { h: +m[1], mi: 0 };
+
     return null;
   }
 
@@ -1183,6 +1376,7 @@
         </div>
         <div class="chara-name">${escapeHtml(c.bunrui60_charaName)}</div>
         <div class="fuku-badge">福の神No. <span class="fuku-num">${c.fukuNoKami.label}</span></div>
+        <div class="rail-badge">レール <span class="rail-num">${escapeHtml(c.rail.rail)}</span><span class="rail-sub">（${escapeHtml(c.rail.tsuhensei)}）</span></div>
       </div>
       <div class="pillars">
         ${pillarBoxHtml("本質", c.honshitsu)}
@@ -1257,9 +1451,22 @@
       const cols = line.split("\t");
       // タブが無い場合はスペース2個以上やカンマで分割するフォールバック
       let parts = cols.length >= 2 ? cols : line.split(/,|\s{2,}/);
-      const name = (parts[0] || "").trim();
-      const dateStr = (parts[1] || "").trim();
-      const timeStr = (parts[2] || "").trim();
+
+      let sei, mei, dateStr, timeStr;
+      if (parts.length >= 4) {
+        // 新形式: 性, 名, 生年月日, 時間
+        sei = (parts[0] || "").trim();
+        mei = (parts[1] || "").trim();
+        dateStr = (parts[2] || "").trim();
+        timeStr = (parts[3] || "").trim();
+      } else {
+        // 旧形式(後方互換): 名前(1列), 生年月日, 時間
+        sei = (parts[0] || "").trim();
+        mei = "";
+        dateStr = (parts[1] || "").trim();
+        timeStr = (parts[2] || "").trim();
+      }
+      const name = [sei, mei].filter(s => s).join(" ");
 
       const date = parseFlexibleDate(dateStr);
       const time = parseFlexibleTime(timeStr);
@@ -1269,7 +1476,7 @@
       else if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) error = "日付の値が不正です";
 
       rows.push({
-        lineNo: i + 1, name, dateStr, timeStr,
+        lineNo: i + 1, name, sei, mei, dateStr, timeStr,
         y: date ? date.y : null, m: date ? date.m : null, d: date ? date.d : null,
         h: time ? time.h : null, mi: time ? time.mi : null,
         error
@@ -1287,13 +1494,14 @@
       ${rows.length}件中 <b>${okCount}件 読み取りOK</b>${errCount > 0 ? `／<span style="color:#e0648a;">${errCount}件 エラー</span>` : ""}
     </div>`;
     html += `<table class="preview-table"><thead><tr>
-      <th>#</th><th>名前</th><th>生年月日</th><th>時刻</th><th>状態</th>
+      <th>#</th><th>性</th><th>名</th><th>生年月日</th><th>時刻</th><th>状態</th>
     </tr></thead><tbody>`;
     rows.forEach(r => {
       const rowClass = r.error ? "err-row" : "";
       html += `<tr class="${rowClass}">
         <td>${r.lineNo}</td>
-        <td>${escapeHtml(r.name || "—")}</td>
+        <td>${escapeHtml(r.sei || "—")}</td>
+        <td>${escapeHtml(r.mei || "—")}</td>
         <td>${escapeHtml(r.dateStr || "—")}</td>
         <td>${escapeHtml(r.timeStr || "—")}</td>
         <td>${r.error ? "⚠️ " + r.error : "✓ OK"}</td>
@@ -1306,13 +1514,14 @@
   // ---------- CSV出力 ----------
   function exportCsv() {
     if (results.length === 0) { showToast("診断結果がありません"); return; }
-    const headers = ["名前","グループ名","生年月日","時刻","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+    const headers = ["名前","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
     const lines = [headers.join(",")];
     results.forEach(r => {
       const c = r.calc;
       const g = r.groupId ? getGroupById(r.groupId) : null;
       const row = [
         r.name, g ? g.name : "（未設定）", r.birthDate, r.birthTime,
+        c.rail.rail, c.rail.tsuhensei,
         c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
         c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
         GROUP_LABEL[c.honshitsu.group], c.honshitsu.animal, c.honshitsu.juniun,
@@ -1465,6 +1674,48 @@
     return counts;
   }
 
+  // 12動物別の人数分布を集計(本質/表面/意思いずれかについて)
+  function calcAnimalCounts(memberResults, pillarKey) {
+    const counts = {};
+    ANIMAL_ORDER.forEach(a => { counts[a.animal] = 0; });
+    memberResults.forEach(r => {
+      const animal = r.calc[pillarKey].animal;
+      if (counts[animal] !== undefined) counts[animal]++;
+    });
+    return counts;
+  }
+
+  function animalRankingHtml(title, pillarKey, memberResults) {
+    const counts = calcAnimalCounts(memberResults, pillarKey);
+    const total = memberResults.length;
+    const ranking = ANIMAL_ORDER
+      .map(a => ({ animal: a.animal, group: a.group, count: counts[a.animal] }))
+      .filter(item => item.count > 0)
+      .sort((a, b) => b.count - a.count);
+
+    if (ranking.length === 0) {
+      return `<div class="fuku-rank-card"><h3>${title}</h3><div class="hint">データがありません</div></div>`;
+    }
+    const maxCount = ranking[0].count;
+    const rows = ranking.map(item => {
+      const pct = Math.round((item.count / total) * 100);
+      const isTop = item.count === maxCount;
+      return `
+        <div class="fuku-rank-row ${isTop ? "top" : ""}">
+          <span class="frank-no animal-label">${isTop ? "👑" : ""}<span class="animal-dot" style="background:${PIE_COLORS[item.group]}"></span>${escapeHtml(item.animal)}</span>
+          <div class="frank-bar-track">
+            <div class="frank-bar-fill" style="width:${pct}%; background:${PIE_COLORS[item.group]};"></div>
+          </div>
+          <span class="frank-pct">${item.count}人 (${pct}%)</span>
+        </div>`;
+    }).join("");
+    return `
+    <div class="fuku-rank-card">
+      <h3>${title}</h3>
+      ${rows}
+    </div>`;
+  }
+
   // 福の神No.の各桁(n1/n2/n3)について、0-9の出現回数を集計し、多い順に並べる
   function calcFukuNoKamiRanking(memberResults, key) {
     const counts = Array(10).fill(0); // index 0-9
@@ -1547,6 +1798,13 @@
         ${pieCardHtml("本質グループ", honshitsuCounts)}
         ${pieCardHtml("表面グループ", hyomenCounts)}
         ${pieCardHtml("意思グループ", ishiCounts)}
+      </div>
+      <div class="card" style="margin-top:18px;">
+        <h2>🐾 動物別 集計</h2>
+        <div class="hint" style="margin-bottom:14px;">本質・表面・意思それぞれで、12動物の分布を多い順に表示します</div>
+        ${animalRankingHtml("本質（動物別）", "honshitsu", members)}
+        ${animalRankingHtml("表面（動物別）", "hyomen", members)}
+        ${animalRankingHtml("意思（動物別）", "ishi", members)}
       </div>
       <div class="card" style="margin-top:18px;">
         <h2>🍀 福の神No. 集計</h2>
