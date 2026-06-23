@@ -57,6 +57,20 @@
     { animal:"ペガサス", group:"sun" },
   ];
 
+  // 10種のレール表示順(木火土金水の順、各＋－)。色は五行に対応したパステルカラー。
+  const RAIL_ORDER = [
+    { rail:"マイペース",   element:"木", color:"#a8d8a0" },
+    { rail:"マイウェイ",   element:"木", color:"#7fc788" },
+    { rail:"ピース",       element:"火", color:"#ffb3a8" },
+    { rail:"ロマン",       element:"火", color:"#ff9080" },
+    { rail:"ヒューマニティ", element:"土", color:"#e3c89a" },
+    { rail:"リアリティ",   element:"土", color:"#cba36e" },
+    { rail:"ワイルド",     element:"金", color:"#e8d97a" },
+    { rail:"エリート",     element:"金", color:"#d4c14e" },
+    { rail:"ユニーク",     element:"水", color:"#8fd4ff" },
+    { rail:"ロジック",     element:"水", color:"#6fb8e8" },
+  ];
+
   // 60分類 No.(1-60) -> 固有の形容詞付きキャラクター名・干グループ
   // 出典: MetaQ「木火土金水と12分類キャラクター」表（のりぴさん提供画像より転記・確定）
   const BUNRUI60_DETAIL = {
@@ -990,6 +1004,48 @@
     </div>`;
   }
 
+  // レール(マイペース/マイウェイ/ピース/ロマン...)の人数分布を集計
+  function calcRailCounts(memberResults) {
+    const counts = {};
+    RAIL_ORDER.forEach(r => { counts[r.rail] = 0; });
+    memberResults.forEach(r => {
+      const rail = r.calc.rail.rail;
+      if (counts[rail] !== undefined) counts[rail]++;
+    });
+    return counts;
+  }
+
+  function railRankingHtml(memberResults) {
+    const counts = calcRailCounts(memberResults);
+    const total = memberResults.length;
+    const ranking = RAIL_ORDER
+      .map(r => ({ rail: r.rail, color: r.color, count: counts[r.rail] }))
+      .filter(item => item.count > 0)
+      .sort((a, b) => b.count - a.count);
+
+    if (ranking.length === 0) {
+      return `<div class="fuku-rank-card"><h3>レール</h3><div class="hint">データがありません</div></div>`;
+    }
+    const maxCount = ranking[0].count;
+    const rows = ranking.map(item => {
+      const pct = Math.round((item.count / total) * 100);
+      const isTop = item.count === maxCount;
+      return `
+        <div class="fuku-rank-row ${isTop ? "top" : ""}">
+          <span class="frank-no animal-label">${isTop ? "👑" : ""}<span class="animal-dot" style="background:${item.color}"></span>${escapeHtml(item.rail)}</span>
+          <div class="frank-bar-track">
+            <div class="frank-bar-fill" style="width:${pct}%; background:${item.color};"></div>
+          </div>
+          <span class="frank-pct">${item.count}人 (${pct}%)</span>
+        </div>`;
+    }).join("");
+    return `
+    <div class="fuku-rank-card">
+      <h3>レール</h3>
+      ${rows}
+    </div>`;
+  }
+
   // 福の神No.の各桁(n1/n2/n3)について、0-9の出現回数を集計し、多い順に並べる
   function calcFukuNoKamiRanking(memberResults, key) {
     const counts = Array(10).fill(0); // index 0-9
@@ -1079,6 +1135,11 @@
         ${animalRankingHtml("本質（動物別）", "honshitsu", members)}
         ${animalRankingHtml("表面（動物別）", "hyomen", members)}
         ${animalRankingHtml("意思（動物別）", "ishi", members)}
+      </div>
+      <div class="card" style="margin-top:18px;">
+        <h2>🚃 レール 集計</h2>
+        <div class="hint" style="margin-bottom:14px;">グループ内で多いレールを順に表示します</div>
+        ${railRankingHtml(members)}
       </div>
       <div class="card" style="margin-top:18px;">
         <h2>🍀 福の神No. 集計</h2>
