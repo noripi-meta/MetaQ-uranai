@@ -528,11 +528,14 @@
     return null;
   }
 
-  async function addResult(name, y, m, d, h, mi, groupId) {
+  async function addResult(name, y, m, d, h, mi, groupId, note, sei, mei) {
     const calc = calcFourPillars(y, m, d, h, mi);
     const entry = {
       id: "r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       name: name || "（名前未入力）",
+      sei: sei || "",
+      mei: mei || "",
+      note: note || "",
       birthDate: `${y}/${String(m).padStart(2,"0")}/${String(d).padStart(2,"0")}`,
       birthTime: (h !== null && h !== undefined) ? `${String(h).padStart(2,"0")}:${String(mi||0).padStart(2,"0")}` : "",
       groupId: groupId || null,
@@ -599,11 +602,17 @@
       `<option value="${g.id}" ${entry.groupId === g.id ? "selected" : ""}>${escapeHtml(g.name)}</option>`
     ).join("");
 
+    // 性・名・備考があればその順で組み立てる。性/名が無ければ従来のnameを使う(後方互換)
+    const displayNameParts = (entry.sei || entry.mei)
+      ? [entry.sei, entry.mei, entry.note].filter(s => s)
+      : [entry.name, entry.note].filter(s => s);
+    const displayName = displayNameParts.join("　");
+
     return `
     <div class="result-card">
       <div class="result-head">
         <div>
-          <div class="name">${escapeHtml(entry.name)}</div>
+          <div class="name">${escapeHtml(displayName)}</div>
           <div class="birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</div>
           ${groupBadge}
         </div>
@@ -699,19 +708,36 @@
       // タブが無い場合はスペース2個以上やカンマで分割するフォールバック
       let parts = cols.length >= 2 ? cols : line.split(/,|\s{2,}/);
 
-      let sei, mei, dateStr, timeStr;
-      if (parts.length >= 4) {
-        // 新形式: 性, 名, 生年月日, 時間
+      let sei, mei, dateStr, timeStr, noteStr;
+
+      if (parts.length >= 5) {
+        // 新形式: 性, 名, 生年月日, 時刻, 備考
         sei = (parts[0] || "").trim();
         mei = (parts[1] || "").trim();
         dateStr = (parts[2] || "").trim();
         timeStr = (parts[3] || "").trim();
+        noteStr = (parts[4] || "").trim();
+      } else if (parts.length === 4) {
+        // 4列の場合: 性, 名, 生年月日, (時刻 または 備考)
+        // 4列目が時刻として解釈できなければ備考として扱う
+        sei = (parts[0] || "").trim();
+        mei = (parts[1] || "").trim();
+        dateStr = (parts[2] || "").trim();
+        const fourthCol = (parts[3] || "").trim();
+        if (parseFlexibleTime(fourthCol)) {
+          timeStr = fourthCol;
+          noteStr = "";
+        } else {
+          timeStr = "";
+          noteStr = fourthCol;
+        }
       } else {
         // 旧形式(後方互換): 名前(1列), 生年月日, 時間
         sei = (parts[0] || "").trim();
         mei = "";
         dateStr = (parts[1] || "").trim();
         timeStr = (parts[2] || "").trim();
+        noteStr = "";
       }
       const name = [sei, mei].filter(s => s).join(" ");
 
@@ -723,7 +749,7 @@
       else if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) error = "日付の値が不正です";
 
       rows.push({
-        lineNo: i + 1, name, sei, mei, dateStr, timeStr,
+        lineNo: i + 1, name, sei, mei, dateStr, timeStr, note: noteStr || "",
         y: date ? date.y : null, m: date ? date.m : null, d: date ? date.d : null,
         h: time ? time.h : null, mi: time ? time.mi : null,
         error
@@ -741,7 +767,7 @@
       ${rows.length}件中 <b>${okCount}件 読み取りOK</b>${errCount > 0 ? `／<span style="color:#e0648a;">${errCount}件 エラー</span>` : ""}
     </div>`;
     html += `<table class="preview-table"><thead><tr>
-      <th>#</th><th>性</th><th>名</th><th>生年月日</th><th>時刻</th><th>状態</th>
+      <th>#</th><th>性</th><th>名</th><th>生年月日</th><th>時刻</th><th>備考</th><th>状態</th>
     </tr></thead><tbody>`;
     rows.forEach(r => {
       const rowClass = r.error ? "err-row" : "";
@@ -751,6 +777,7 @@
         <td>${escapeHtml(r.mei || "—")}</td>
         <td>${escapeHtml(r.dateStr || "—")}</td>
         <td>${escapeHtml(r.timeStr || "—")}</td>
+        <td>${escapeHtml(r.note || "—")}</td>
         <td>${r.error ? "⚠️ " + r.error : "✓ OK"}</td>
       </tr>`;
     });
@@ -761,13 +788,15 @@
   // ---------- CSV出力 ----------
   function exportCsv() {
     if (results.length === 0) { showToast("診断結果がありません"); return; }
-    const headers = ["名前","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+    const headers = ["性","名","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
     const lines = [headers.join(",")];
     results.forEach(r => {
       const c = r.calc;
       const g = r.groupId ? getGroupById(r.groupId) : null;
+      const seiOut = r.sei || r.name || "";
+      const meiOut = r.mei || "";
       const row = [
-        r.name, g ? g.name : "（未設定）", r.birthDate, r.birthTime,
+        seiOut, meiOut, r.note || "", g ? g.name : "（未設定）", r.birthDate, r.birthTime,
         c.rail.rail, c.rail.tsuhensei,
         c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
         c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
@@ -1119,7 +1148,7 @@
       if (!selectedBulkGroupId) { showToast("登録先グループを選択してください"); return; }
       const validRows = lastParsedRows.filter(r => !r.error);
       for (const r of validRows) {
-        await addResult(r.name, r.y, r.m, r.d, r.h, r.mi, selectedBulkGroupId);
+        await addResult(r.name, r.y, r.m, r.d, r.h, r.mi, selectedBulkGroupId, r.note, r.sei, r.mei);
       }
       document.getElementById("bulk-textarea").value = "";
       document.getElementById("bulk-preview").innerHTML = "";
