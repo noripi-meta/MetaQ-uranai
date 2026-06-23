@@ -5,9 +5,13 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
 import {
-  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
@@ -32,7 +36,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// indexedDBLocalPersistenceを明示指定することで、Safari/PWA(ホーム画面アプリ)の
+// sessionStorage制約に影響されにくい永続化方式を使う
+const auth = initializeAuth(app, {
+  persistence: indexedDBLocalPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver
+});
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
@@ -72,11 +81,29 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // ---------- ログイン/ログアウト操作 ----------
-// iOS Safari等でsignInWithRedirectがsessionStorageの制約で失敗するケースがあるため、
-// signInWithPopupのみを使用するシンプルな構成にしている。
+// ホーム画面に追加した「Webアプリ」(スタンドアロンモード)では、
+// window.openによるポップアップが機能しないことが多いため、
+// その場合はリダイレクト方式を使う。通常のSafariタブではポップアップ方式を使う。
+function isStandaloneMode() {
+  return window.navigator.standalone === true ||
+         window.matchMedia("(display-mode: standalone)").matches;
+}
+
 async function doSignIn() {
   const loadingEl = document.getElementById("login-loading");
   loadingEl.textContent = "ログイン中...";
+
+  if (isStandaloneMode()) {
+    // スタンドアロンモードではリダイレクト方式のみを使う
+    try {
+      await signInWithRedirect(auth, provider);
+    } catch (err) {
+      console.error(err);
+      loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+    }
+    return;
+  }
+
   try {
     await signInWithPopup(auth, provider);
     loadingEl.textContent = "";
@@ -88,12 +115,26 @@ async function doSignIn() {
       return;
     }
     if (err && err.code === "auth/popup-blocked") {
-      loadingEl.textContent = "ポップアップがブロックされました。ブラウザの設定でポップアップを許可してから、もう一度お試しください。";
-      return;
+      // ポップアップがブロックされた場合はリダイレクト方式にフォールバック
+      try {
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (err2) {
+        console.error(err2);
+        loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+        return;
+      }
     }
     loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
   }
 }
+
+// リダイレクトログインから戻ってきた場合の結果処理
+getRedirectResult(auth).catch((err) => {
+  console.error("redirect result error", err);
+  const loadingEl = document.getElementById("login-loading");
+  if (loadingEl) loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   const btn = document.getElementById("google-signin-btn");
