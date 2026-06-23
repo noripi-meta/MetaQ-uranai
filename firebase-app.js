@@ -99,7 +99,7 @@ async function doSignIn() {
       await signInWithRedirect(auth, provider);
     } catch (err) {
       console.error(err);
-      loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+      loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
     }
     return;
   }
@@ -121,11 +121,11 @@ async function doSignIn() {
         return;
       } catch (err2) {
         console.error(err2);
-        loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+        loadingEl.textContent = "ログインに失敗しました: " + (err2 && err2.code ? err2.code : String(err2));
         return;
       }
     }
-    loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+    loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
   }
 }
 
@@ -133,7 +133,7 @@ async function doSignIn() {
 getRedirectResult(auth).catch((err) => {
   console.error("redirect result error", err);
   const loadingEl = document.getElementById("login-loading");
-  if (loadingEl) loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
+  if (loadingEl) loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
 });
 
 document.addEventListener("DOMContentLoaded", () => {
