@@ -8,8 +8,6 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
@@ -74,25 +72,26 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // ---------- ログイン/ログアウト操作 ----------
+// iOS Safari等でsignInWithRedirectがsessionStorageの制約で失敗するケースがあるため、
+// signInWithPopupのみを使用するシンプルな構成にしている。
 async function doSignIn() {
   const loadingEl = document.getElementById("login-loading");
   loadingEl.textContent = "ログイン中...";
   try {
     await signInWithPopup(auth, provider);
+    loadingEl.textContent = "";
   } catch (err) {
-    // ポップアップがブロックされた場合はリダイレクト方式にフォールバック
-    if (err && (err.code === "auth/popup-blocked" || err.code === "auth/cancelled-popup-request" || err.code === "auth/popup-closed-by-user")) {
-      try {
-        await signInWithRedirect(auth, provider);
-        return;
-      } catch (err2) {
-        loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
-        console.error(err2);
-        return;
-      }
+    console.error(err);
+    if (err && err.code === "auth/popup-closed-by-user") {
+      // ユーザー自身がポップアップを閉じた場合は何もしない(エラー表示も不要)
+      loadingEl.textContent = "";
+      return;
+    }
+    if (err && err.code === "auth/popup-blocked") {
+      loadingEl.textContent = "ポップアップがブロックされました。ブラウザの設定でポップアップを許可してから、もう一度お試しください。";
+      return;
     }
     loadingEl.textContent = "ログインに失敗しました。もう一度お試しください。";
-    console.error(err);
   }
 }
 
@@ -109,9 +108,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
-
-// リダイレクトログインから戻ってきた場合の結果処理
-getRedirectResult(auth).catch((err) => console.error("redirect result error", err));
 
 // ---------- Firestore データ永続化 ----------
 // パス構造: users/{uid}/results/{resultId}, users/{uid}/groups/{groupId}
