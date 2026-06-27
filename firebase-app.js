@@ -21,7 +21,6 @@ import {
   doc,
   setDoc,
   deleteDoc,
-  getDocs,
   onSnapshot,
   query
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
@@ -48,21 +47,56 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 let resultsUnsub = null;
 let groupsUnsub = null;
+let domReady = false;
+let pendingLoginMessage = null; // DOM準備前にエラーが来た場合に保留しておく
 
 // ---------- ログインUI制御 ----------
 function showLoginScreen() {
-  document.getElementById("login-overlay").style.display = "flex";
-  document.getElementById("app-content").classList.remove("ready");
+  const overlay = document.getElementById("login-overlay");
+  const content = document.getElementById("app-content");
+  if (overlay) overlay.style.display = "flex";
+  if (content) content.classList.remove("ready");
 }
 
 function showAppScreen(user) {
-  document.getElementById("login-overlay").style.display = "none";
-  document.getElementById("app-content").classList.add("ready");
+  const overlay = document.getElementById("login-overlay");
+  const content = document.getElementById("app-content");
+  if (overlay) overlay.style.display = "none";
+  if (content) content.classList.add("ready");
 
   const userBar = document.getElementById("user-bar");
-  userBar.style.display = "flex";
-  document.getElementById("user-avatar").src = user.photoURL || "";
-  document.getElementById("user-name").textContent = user.displayName || user.email || "";
+  if (userBar) {
+    userBar.style.display = "flex";
+    const avatar = document.getElementById("user-avatar");
+    const nameEl = document.getElementById("user-name");
+    if (avatar) avatar.src = user.photoURL || "";
+    if (nameEl) nameEl.textContent = user.displayName || user.email || "";
+  }
+}
+
+function setLoginMessage(text) {
+  const loadingEl = document.getElementById("login-loading");
+  if (loadingEl) {
+    loadingEl.textContent = text;
+  } else {
+    // DOMがまだ準備できていない場合は保留し、DOMContentLoaded後に表示する
+    pendingLoginMessage = text;
+  }
+}
+
+// Firebaseのエラーコードを、ユーザー向けの分かりやすい日本語メッセージに変換
+function friendlyErrorMessage(err) {
+  const code = err && err.code ? err.code : "";
+  const map = {
+    "auth/network-request-failed": "通信エラーが発生しました。電波の良い場所で再度お試しください。",
+    "auth/too-many-requests": "アクセスが集中しています。少し時間をおいて再度お試しください。",
+    "auth/user-disabled": "このアカウントは現在ご利用いただけません。",
+    "auth/popup-blocked": "ポップアップがブロックされました。もう一度お試しください。",
+    "auth/cancelled-popup-request": "", // ユーザー操作によるキャンセルなのでメッセージ不要
+    "auth/popup-closed-by-user": "", // ユーザー操作によるキャンセルなのでメッセージ不要
+  };
+  if (code in map) return map[code];
+  return "ログインに失敗しました。もう一度お試しください。";
 }
 
 // ---------- 認証状態の監視 ----------
@@ -90,28 +124,27 @@ function isStandaloneMode() {
 }
 
 async function doSignIn() {
-  const loadingEl = document.getElementById("login-loading");
-  loadingEl.textContent = "ログイン中...";
+  setLoginMessage("ログイン中...");
 
   if (isStandaloneMode()) {
     // スタンドアロンモードではリダイレクト方式のみを使う
     try {
       await signInWithRedirect(auth, provider);
     } catch (err) {
-      console.error(err);
-      loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
+      console.error("signInWithRedirect failed:", err);
+      setLoginMessage(friendlyErrorMessage(err));
     }
     return;
   }
 
   try {
     await signInWithPopup(auth, provider);
-    loadingEl.textContent = "";
+    setLoginMessage("");
   } catch (err) {
-    console.error(err);
-    if (err && err.code === "auth/popup-closed-by-user") {
-      // ユーザー自身がポップアップを閉じた場合は何もしない(エラー表示も不要)
-      loadingEl.textContent = "";
+    console.error("signInWithPopup failed:", err);
+    if (err && (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request")) {
+      // ユーザー自身がポップアップを閉じた場合は何もしない
+      setLoginMessage("");
       return;
     }
     if (err && err.code === "auth/popup-blocked") {
@@ -120,23 +153,30 @@ async function doSignIn() {
         await signInWithRedirect(auth, provider);
         return;
       } catch (err2) {
-        console.error(err2);
-        loadingEl.textContent = "ログインに失敗しました: " + (err2 && err2.code ? err2.code : String(err2));
+        console.error("signInWithRedirect fallback failed:", err2);
+        setLoginMessage(friendlyErrorMessage(err2));
         return;
       }
     }
-    loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
+    setLoginMessage(friendlyErrorMessage(err));
   }
 }
 
 // リダイレクトログインから戻ってきた場合の結果処理
+// (onAuthStateChangedより先に発火することがあるため、エラー時はsetLoginMessageの
+//  保留キュー機構で安全にハンドリングする)
 getRedirectResult(auth).catch((err) => {
-  console.error("redirect result error", err);
-  const loadingEl = document.getElementById("login-loading");
-  if (loadingEl) loadingEl.textContent = "ログインに失敗しました: " + (err && err.code ? err.code : String(err));
+  console.error("getRedirectResult failed:", err);
+  setLoginMessage(friendlyErrorMessage(err));
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  domReady = true;
+  if (pendingLoginMessage !== null) {
+    setLoginMessage(pendingLoginMessage);
+    pendingLoginMessage = null;
+  }
+
   const btn = document.getElementById("google-signin-btn");
   if (btn) btn.addEventListener("click", doSignIn);
 
@@ -168,17 +208,17 @@ function subscribeToData(uid) {
   resultsUnsub = onSnapshot(query(resultsCollection(uid)), (snap) => {
     const results = [];
     snap.forEach((d) => results.push({ id: d.id, ...d.data() }));
-    // 新しい順(降順)に並べる: createdAtがあれば使う
+    // 新しい順(降順)に並べる
     results.sort((a, b) => (b._createdAt || 0) - (a._createdAt || 0));
     window.dispatchEvent(new CustomEvent("metaq:results-updated", { detail: { results } }));
-  }, (err) => console.error("results subscribe error", err));
+  }, (err) => console.error("results subscribe error:", err));
 
   groupsUnsub = onSnapshot(query(groupsCollection(uid)), (snap) => {
     const groups = [];
     snap.forEach((d) => groups.push({ id: d.id, ...d.data() }));
     groups.sort((a, b) => (a._createdAt || 0) - (b._createdAt || 0));
     window.dispatchEvent(new CustomEvent("metaq:groups-updated", { detail: { groups } }));
-  }, (err) => console.error("groups subscribe error", err));
+  }, (err) => console.error("groups subscribe error:", err));
 }
 
 // ---------- 書き込みAPI（app.js から window.metaqFirestore.xxx() で呼ぶ） ----------
