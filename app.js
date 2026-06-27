@@ -474,15 +474,6 @@
     setTimeout(() => t.classList.remove("show"), 2200);
   }
 
-  function parseDateInput(dateStr) {
-    // dateStr: "YYYY-MM-DD"
-    const parts = dateStr.split("-");
-    if (parts.length !== 3) return null;
-    const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-    if (!y || !m || !d) return null;
-    return { y, m, d };
-  }
-
   // ---------- 表記ゆれ吸収ユーティリティ ----------
   // 全角数字(０-９)を半角(0-9)に変換し、全角記号も半角化、前後の余分な空白を除去
   function normalizeNumericString(str) {
@@ -1175,15 +1166,14 @@
       const dateVal = document.getElementById("single-date").value;
       const timeVal = document.getElementById("single-time").value;
 
-      const date = parseDateInput(dateVal);
-      if (!date) { showToast("生年月日を入力してください"); return; }
+      const date = parseFlexibleDate(dateVal);
+      if (!date) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
+      if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) { showToast("日付の値が正しくありません"); return; }
       if (!selectedSingleGroupId) { showToast("グループを選択してください"); return; }
 
-      let h = null, mi = null;
-      if (timeVal) {
-        const [hh, mm] = timeVal.split(":").map(Number);
-        h = hh; mi = mm;
-      }
+      const time = parseFlexibleTime(timeVal);
+      const h = time ? time.h : null;
+      const mi = time ? time.mi : null;
 
       await addResult(name, date.y, date.m, date.d, h, mi, selectedSingleGroupId);
       document.getElementById("single-name").value = "";
