@@ -5,9 +5,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
 import {
-  initializeAuth,
-  indexedDBLocalPersistence,
-  browserPopupRedirectResolver,
+  getAuth,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -35,12 +33,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-// indexedDBLocalPersistenceを明示指定することで、Safari/PWA(ホーム画面アプリ)の
-// sessionStorage制約に影響されにくい永続化方式を使う
-const auth = initializeAuth(app, {
-  persistence: indexedDBLocalPersistence,
-  popupRedirectResolver: browserPopupRedirectResolver
-});
+// Firebase標準のgetAuthを使う(ブラウザに応じて適切な永続化方式が自動選択される)
+const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
@@ -103,6 +97,7 @@ function friendlyErrorMessage(err) {
 onAuthStateChanged(auth, (user) => {
   if (user) {
     currentUser = user;
+    clearRedirectInProgressFlag();
     showAppScreen(user);
     window.dispatchEvent(new CustomEvent("metaq:auth-ready", { detail: { uid: user.uid } }));
     subscribeToData(user.uid);
@@ -115,27 +110,26 @@ onAuthStateChanged(auth, (user) => {
 });
 
 // ---------- ログイン/ログアウト操作 ----------
-// ホーム画面に追加した「Webアプリ」(スタンドアロンモード)では、
-// window.openによるポップアップが機能しないことが多いため、
-// その場合はリダイレクト方式を使う。通常のSafariタブではポップアップ方式を使う。
-function isStandaloneMode() {
-  return window.navigator.standalone === true ||
-         window.matchMedia("(display-mode: standalone)").matches;
+const REDIRECT_FLAG_KEY = "metaq_redirect_in_progress";
+
+function setRedirectInProgressFlag() {
+  try { sessionStorage.setItem(REDIRECT_FLAG_KEY, "1"); } catch (e) {}
+}
+function clearRedirectInProgressFlag() {
+  try { sessionStorage.removeItem(REDIRECT_FLAG_KEY); } catch (e) {}
+}
+function isRedirectInProgress() {
+  try { return sessionStorage.getItem(REDIRECT_FLAG_KEY) === "1"; } catch (e) { return false; }
 }
 
 async function doSignIn() {
-  setLoginMessage("ログイン中...");
-
-  if (isStandaloneMode()) {
-    // スタンドアロンモードではリダイレクト方式のみを使う
-    try {
-      await signInWithRedirect(auth, provider);
-    } catch (err) {
-      console.error("signInWithRedirect failed:", err);
-      setLoginMessage(friendlyErrorMessage(err));
-    }
+  // 既にリダイレクト中(戻ってきて結果待ちの状態)であれば、二重にログイン処理を開始しない
+  if (isRedirectInProgress()) {
+    setLoginMessage("ログイン処理中です。少々お待ちください...");
     return;
   }
+
+  setLoginMessage("ログイン中...");
 
   try {
     await signInWithPopup(auth, provider);
@@ -147,28 +141,29 @@ async function doSignIn() {
       setLoginMessage("");
       return;
     }
-    if (err && err.code === "auth/popup-blocked") {
-      // ポップアップがブロックされた場合はリダイレクト方式にフォールバック
-      try {
-        await signInWithRedirect(auth, provider);
-        return;
-      } catch (err2) {
-        console.error("signInWithRedirect fallback failed:", err2);
-        setLoginMessage(friendlyErrorMessage(err2));
-        return;
-      }
+    // ポップアップが使えない環境(ブロック、スタンドアロンモード等)はリダイレクト方式にフォールバック
+    try {
+      setRedirectInProgressFlag();
+      await signInWithRedirect(auth, provider);
+    } catch (err2) {
+      console.error("signInWithRedirect fallback failed:", err2);
+      clearRedirectInProgressFlag();
+      setLoginMessage(friendlyErrorMessage(err2));
     }
-    setLoginMessage(friendlyErrorMessage(err));
   }
 }
 
 // リダイレクトログインから戻ってきた場合の結果処理
-// (onAuthStateChangedより先に発火することがあるため、エラー時はsetLoginMessageの
-//  保留キュー機構で安全にハンドリングする)
-getRedirectResult(auth).catch((err) => {
-  console.error("getRedirectResult failed:", err);
-  setLoginMessage(friendlyErrorMessage(err));
-});
+getRedirectResult(auth)
+  .then((result) => {
+    clearRedirectInProgressFlag();
+    // resultがnullの場合はリダイレクトログイン以外の通常読み込み(onAuthStateChangedが処理する)
+  })
+  .catch((err) => {
+    console.error("getRedirectResult failed:", err);
+    clearRedirectInProgressFlag();
+    setLoginMessage(friendlyErrorMessage(err));
+  });
 
 document.addEventListener("DOMContentLoaded", () => {
   domReady = true;
