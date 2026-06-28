@@ -533,6 +533,14 @@
     return null;
   }
 
+  // 入力欄からフォーカスが外れた時に、解析できた値を統一表記(YYYY/MM/DD, HH:MM)に整形して表示する
+  function formatDateForDisplay(parsed) {
+    return `${parsed.y}/${String(parsed.m).padStart(2,"0")}/${String(parsed.d).padStart(2,"0")}`;
+  }
+  function formatTimeForDisplay(parsed) {
+    return `${String(parsed.h).padStart(2,"0")}:${String(parsed.mi).padStart(2,"0")}`;
+  }
+
   async function addResult(name, y, m, d, h, mi, groupId, note, sei, mei) {
     const calc = calcFourPillars(y, m, d, h, mi);
     const entry = {
@@ -1150,6 +1158,19 @@
   document.addEventListener("DOMContentLoaded", () => {
     renderResults();
     refreshAllGroupUI();
+
+    // 生年月日・時刻入力: フォーカスが外れたら統一表記に自動整形する
+    const singleDateInput = document.getElementById("single-date");
+    singleDateInput.addEventListener("blur", () => {
+      const parsed = parseFlexibleDate(singleDateInput.value);
+      if (parsed) singleDateInput.value = formatDateForDisplay(parsed);
+    });
+    const singleTimeInput = document.getElementById("single-time");
+    singleTimeInput.addEventListener("blur", () => {
+      if (!singleTimeInput.value.trim()) return; // 空欄はそのまま(任意項目)
+      const parsed = parseFlexibleTime(singleTimeInput.value);
+      if (parsed) singleTimeInput.value = formatTimeForDisplay(parsed);
+    });
 
     document.querySelectorAll(".tab-btn").forEach(btn => {
       btn.addEventListener("click", () => {
