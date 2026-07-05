@@ -41,6 +41,7 @@ const provider = new GoogleAuthProvider();
 let currentUser = null;
 let resultsUnsub = null;
 let groupsUnsub = null;
+let settingsUnsub = null;
 let domReady = false;
 let pendingLoginMessage = null; // DOM準備前にエラーが来た場合に保留しておく
 
@@ -106,6 +107,7 @@ onAuthStateChanged(auth, (user) => {
     showLoginScreen();
     if (resultsUnsub) { resultsUnsub(); resultsUnsub = null; }
     if (groupsUnsub) { groupsUnsub(); groupsUnsub = null; }
+    if (settingsUnsub) { settingsUnsub(); settingsUnsub = null; }
   }
 });
 
@@ -196,9 +198,14 @@ function groupsCollection(uid) {
 }
 
 // リアルタイム購読: 変更があるたびにapp.js側へイベントで通知
+function settingsDoc(uid) {
+  return doc(db, "users", uid, "settings", "app");
+}
+
 function subscribeToData(uid) {
   if (resultsUnsub) resultsUnsub();
   if (groupsUnsub) groupsUnsub();
+  if (settingsUnsub) settingsUnsub();
 
   resultsUnsub = onSnapshot(query(resultsCollection(uid)), (snap) => {
     const results = [];
@@ -214,6 +221,11 @@ function subscribeToData(uid) {
     groups.sort((a, b) => (a._createdAt || 0) - (b._createdAt || 0));
     window.dispatchEvent(new CustomEvent("metaq:groups-updated", { detail: { groups } }));
   }, (err) => console.error("groups subscribe error:", err));
+
+  settingsUnsub = onSnapshot(settingsDoc(uid), (snap) => {
+    const settings = snap.exists() ? snap.data() : {};
+    window.dispatchEvent(new CustomEvent("metaq:settings-updated", { detail: { settings } }));
+  }, (err) => console.error("settings subscribe error:", err));
 }
 
 // ---------- 書き込みAPI（app.js から window.metaqFirestore.xxx() で呼ぶ） ----------
@@ -243,11 +255,18 @@ async function deleteGroup(id) {
   await deleteDoc(doc(groupsCollection(currentUser.uid), id));
 }
 
+// アプリ設定(スプレッドシート連携URLなど)を部分更新で保存する
+async function saveSettings(partial) {
+  if (!currentUser) return;
+  await setDoc(settingsDoc(currentUser.uid), partial, { merge: true });
+}
+
 // app.js からアクセスできるようグローバルに公開
 window.metaqFirestore = {
   saveResult,
   deleteResult,
   saveGroup,
   deleteGroup,
+  saveSettings,
   getCurrentUser: () => currentUser
 };

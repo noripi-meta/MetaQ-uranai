@@ -430,6 +430,7 @@
     if (fs) {
       try { await fs.saveGroup(g); } catch (e) { console.error(e); showToast("グループの保存に失敗しました"); return null; }
     }
+    scheduleSheetSync();
     return g;
   }
 
@@ -444,6 +445,7 @@
         const updated = { ...r, groupId: null };
         await fs.saveResult(updated);
       }
+      scheduleSheetSync();
     } catch (e) {
       console.error(e);
       showToast("グループの削除に失敗しました");
@@ -562,6 +564,7 @@
     // 画面には即時反映しておく(購読イベントが届くと正しい状態に上書きされる)
     results = [entry, ...results];
     renderResults();
+    scheduleSheetSync();
   }
 
   async function deleteResult(id) {
@@ -571,6 +574,7 @@
     }
     results = results.filter(r => r.id !== id);
     renderResults();
+    scheduleSheetSync();
   }
 
   async function setResultGroup(id, groupId) {
@@ -583,6 +587,7 @@
     }
     results = results.map(x => x.id === id ? updated : x);
     renderResults();
+    scheduleSheetSync();
   }
 
   function groupChipHtml(group) {
@@ -798,26 +803,32 @@
     container.innerHTML = html;
   }
 
+  // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
+  const RESULT_HEADERS = ["性","名","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+
+  function resultToRow(r) {
+    const c = r.calc;
+    const g = r.groupId ? getGroupById(r.groupId) : null;
+    const seiOut = r.sei || r.name || "";
+    const meiOut = r.mei || "";
+    return [
+      seiOut, meiOut, r.note || "", g ? g.name : "（未設定）", r.birthDate, r.birthTime,
+      c.rail.rail, c.rail.tsuhensei,
+      c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
+      c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
+      GROUP_LABEL[c.honshitsu.group], c.honshitsu.animal, c.honshitsu.juniun,
+      GROUP_LABEL[c.hyomen.group], c.hyomen.animal, c.hyomen.juniun,
+      GROUP_LABEL[c.ishi.group], c.ishi.animal, c.ishi.juniun,
+      c.jichu ? c.jichu.animal : "", c.jichu ? c.jichu.juniun : ""
+    ];
+  }
+
   // ---------- CSV出力 ----------
   function exportCsv() {
     if (results.length === 0) { showToast("診断結果がありません"); return; }
-    const headers = ["性","名","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
-    const lines = [headers.join(",")];
+    const lines = [RESULT_HEADERS.join(",")];
     results.forEach(r => {
-      const c = r.calc;
-      const g = r.groupId ? getGroupById(r.groupId) : null;
-      const seiOut = r.sei || r.name || "";
-      const meiOut = r.mei || "";
-      const row = [
-        seiOut, meiOut, r.note || "", g ? g.name : "（未設定）", r.birthDate, r.birthTime,
-        c.rail.rail, c.rail.tsuhensei,
-        c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
-        c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
-        GROUP_LABEL[c.honshitsu.group], c.honshitsu.animal, c.honshitsu.juniun,
-        GROUP_LABEL[c.hyomen.group], c.hyomen.animal, c.hyomen.juniun,
-        GROUP_LABEL[c.ishi.group], c.ishi.animal, c.ishi.juniun,
-        c.jichu ? c.jichu.animal : "", c.jichu ? c.jichu.juniun : ""
-      ].map(v => `"${String(v).replace(/"/g,'""')}"`);
+      const row = resultToRow(r).map(v => `"${String(v).replace(/"/g,'""')}"`);
       lines.push(row.join(","));
     });
     const csv = "\uFEFF" + lines.join("\n"); // BOM付きでExcelの文字化け防止
@@ -831,6 +842,114 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast("CSVを出力しました");
+  }
+
+  // ===================================================================
+  // Googleスプレッドシート連携
+  // グループ管理タブで設定したApps Script WebアプリのURLへ診断結果の
+  // 全件スナップショットを送信し、GAS側がグループごとのシートに書き込む。
+  // URLはFirestoreのユーザー設定(users/{uid}/settings/app)に保存され、
+  // どの端末からログインしても同じ設定が使われる。
+  // ===================================================================
+
+  // spreadsheet-sync.gs の TOKEN と同じ文字列にすること
+  const SHEET_SYNC_TOKEN = "metaq-uranai-sync";
+
+  let appSettings = {};       // Firestoreの設定購読で更新される
+  let sheetSyncTimer = null;  // 連続操作をまとめるためのデバウンスタイマー
+  let sheetSyncing = false;
+
+  window.addEventListener("metaq:settings-updated", (e) => {
+    appSettings = e.detail.settings || {};
+    const input = document.getElementById("sheet-url-input");
+    if (input && document.activeElement !== input) input.value = appSettings.sheetUrl || "";
+    updateSheetSyncStatusIdle();
+  });
+
+  function getSheetUrl() {
+    return (appSettings.sheetUrl || "").trim();
+  }
+
+  function setSheetSyncStatus(text) {
+    const el = document.getElementById("sheet-sync-status");
+    if (el) el.textContent = text;
+  }
+
+  function updateSheetSyncStatusIdle() {
+    setSheetSyncStatus(getSheetUrl()
+      ? "✓ 連携設定済み。診断結果を登録・変更すると自動でシートに反映されます。"
+      : "未設定です。設定するとグループごとのシートに一覧が自動で書き込まれます。");
+  }
+
+  // シート名に使えない文字を除去し、空なら代替名を返す
+  function sanitizeSheetName(name) {
+    let s = String(name || "").replace(/[\[\]\*\/\\\?:：]/g, " ").replace(/\s+/g, " ").trim();
+    if (!s) s = "名称未設定";
+    return s.slice(0, 90);
+  }
+
+  function buildSheetPayload() {
+    const usedNames = {};
+    const uniqueName = (base) => {
+      let n = base, i = 2;
+      while (usedNames[n]) n = `${base}(${i++})`;
+      usedNames[n] = true;
+      return n;
+    };
+    const sheets = groups.map(g => {
+      // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える
+      const members = results.filter(r => r.groupId === g.id).slice().reverse();
+      return { name: uniqueName(sanitizeSheetName(g.name)), rows: members.map(resultToRow) };
+    });
+    const ungrouped = results.filter(r => !r.groupId).slice().reverse();
+    if (ungrouped.length > 0) {
+      sheets.push({ name: uniqueName("グループ未設定"), rows: ungrouped.map(resultToRow) });
+    }
+    return { token: SHEET_SYNC_TOKEN, header: RESULT_HEADERS, sheets };
+  }
+
+  // データ変更後に呼ぶ。連続操作(一括登録など)は1回の送信にまとめる
+  function scheduleSheetSync() {
+    if (!getSheetUrl()) return;
+    if (sheetSyncTimer) clearTimeout(sheetSyncTimer);
+    sheetSyncTimer = setTimeout(() => {
+      sheetSyncTimer = null;
+      syncToSheets(false);
+    }, 2500);
+  }
+
+  async function syncToSheets(manual) {
+    const url = getSheetUrl();
+    if (!url) {
+      if (manual) showToast("先にWebアプリのURLを設定してください");
+      return;
+    }
+    if (sheetSyncing) { scheduleSheetSync(); return; }
+    sheetSyncing = true;
+    setSheetSyncStatus("同期中...");
+    try {
+      // Content-Typeをtext/plainにするとCORSのプリフライトが発生せず、
+      // Apps ScriptのWebアプリにブラウザから直接POSTできる
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(buildSheetPayload())
+      });
+      let data = null;
+      try { data = await res.json(); } catch (e) {}
+      if (!res.ok || !data || !data.ok) {
+        throw new Error((data && data.error) || `HTTP ${res.status}`);
+      }
+      const t = new Date();
+      setSheetSyncStatus(`✓ スプレッドシートに同期済み（${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}）`);
+      if (manual) showToast("スプレッドシートに同期しました");
+    } catch (e) {
+      console.error("sheet sync failed:", e);
+      setSheetSyncStatus("⚠️ 同期に失敗しました。URLとデプロイ設定(アクセス:全員)を確認してください。");
+      if (manual) showToast("スプレッドシートへの同期に失敗しました");
+    } finally {
+      sheetSyncing = false;
+    }
   }
 
   // ===================================================================
@@ -1246,6 +1365,7 @@
         }
         results = [];
         renderResults();
+        scheduleSheetSync();
         showToast("全件削除しました");
       }
     });
@@ -1267,6 +1387,30 @@
     document.getElementById("aggregate-group-select").addEventListener("change", (e) => {
       renderAggregateContent(e.target.value);
     });
+
+    // スプレッドシート連携 - URL保存・手動同期
+    const sheetUrlInput = document.getElementById("sheet-url-input");
+    sheetUrlInput.value = getSheetUrl();
+    updateSheetSyncStatusIdle();
+
+    document.getElementById("sheet-url-save").addEventListener("click", async () => {
+      const url = sheetUrlInput.value.trim();
+      if (url && !/^https:\/\/script\.google\.com\/macros\//.test(url)) {
+        showToast("Apps ScriptのWebアプリURL（https://script.google.com/macros/... で始まるもの）を入力してください");
+        return;
+      }
+      const fs = getFS();
+      if (fs && fs.saveSettings) {
+        try { await fs.saveSettings({ sheetUrl: url }); }
+        catch (e) { console.error(e); showToast("設定の保存に失敗しました"); return; }
+      }
+      appSettings = { ...appSettings, sheetUrl: url };
+      updateSheetSyncStatusIdle();
+      showToast(url ? "スプレッドシート連携を設定しました" : "スプレッドシート連携を解除しました");
+      if (url) syncToSheets(true); // 設定直後に一度同期して動作確認を兼ねる
+    });
+
+    document.getElementById("sheet-sync-now").addEventListener("click", () => syncToSheets(true));
   });
 
 })();

@@ -883,6 +883,23 @@
       <h2>📂 グループ一覧</h2>
       <div class="group-list" id="group-list"></div>
     </div>
+    <div class="card">
+      <h2>📗 スプレッドシート連携</h2>
+      <div class="field">
+        <label>Apps Script WebアプリのURL</label>
+        <input type="text" id="sheet-url-input" placeholder="https://script.google.com/macros/s/…/exec">
+      </div>
+      <div class="new-group-row" style="margin-bottom:10px;">
+        <button id="sheet-url-save">保存する</button>
+        <button id="sheet-sync-now">今すぐ同期</button>
+      </div>
+      <div class="hint" id="sheet-sync-status">未設定です。設定するとグループごとのシートに一覧が自動で書き込まれます。</div>
+      <div class="hint">
+        診断結果を登録・変更するたびに、Googleスプレッドシートへ自動で一覧が書き込まれます（グループごとにシートが分かれます）。<br>
+        連携用シートはアプリの内容で毎回上書きされるため、メモ等は別のシートに書いてください。<br>
+        初回の設定手順はリポジトリの <code>SPREADSHEET_SETUP.md</code> を参照してください。
+      </div>
+    </div>
   </div>
 
   <!-- グループ集計 -->
