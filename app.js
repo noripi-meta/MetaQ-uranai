@@ -881,6 +881,26 @@
       : "未設定です。設定するとグループごとのシートに一覧が自動で書き込まれます。");
   }
 
+  // レール名 -> パステルカラー(RAIL_ORDERから逆引き)
+  const RAIL_COLOR = {};
+  RAIL_ORDER.forEach(r => { RAIL_COLOR[r.rail] = r.color; });
+
+  // 1行分のセル背景色を作る(アプリと同じ配色をスプレッドシートにも反映する)
+  // base: 縞模様用の地の色。グループ名・レール・本質/表面/意思・時柱のセルに色を付ける
+  function resultRowColors(r, base) {
+    const c = r.calc;
+    const bg = Array(RESULT_HEADERS.length).fill(base);
+    const g = r.groupId ? getGroupById(r.groupId) : null;
+    if (g) bg[3] = g.color;                                   // グループ名
+    const railColor = RAIL_COLOR[c.rail.rail];
+    if (railColor) { bg[6] = railColor; bg[7] = railColor; }  // レール
+    bg[16] = bg[17] = PIE_COLORS[c.honshitsu.group];          // 本質
+    bg[19] = bg[20] = PIE_COLORS[c.hyomen.group];             // 表面
+    bg[22] = bg[23] = PIE_COLORS[c.ishi.group];               // 意思
+    if (c.jichu) bg[25] = PIE_COLORS[c.jichu.group];          // 時柱
+    return bg;
+  }
+
   // シート名に使えない文字を除去し、空なら代替名を返す
   function sanitizeSheetName(name) {
     let s = String(name || "").replace(/[\[\]\*\/\\\?:：]/g, " ").replace(/\s+/g, " ").trim();
@@ -896,14 +916,25 @@
       usedNames[n] = true;
       return n;
     };
+    const stripe = (i) => (i % 2 === 1) ? "#fdfaff" : "#ffffff";
     const sheets = groups.map(g => {
       // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える
       const members = results.filter(r => r.groupId === g.id).slice().reverse();
-      return { name: uniqueName(sanitizeSheetName(g.name)), rows: members.map(resultToRow) };
+      return {
+        name: uniqueName(sanitizeSheetName(g.name)),
+        tabColor: g.color,
+        rows: members.map(resultToRow),
+        backgrounds: members.map((r, i) => resultRowColors(r, stripe(i)))
+      };
     });
     const ungrouped = results.filter(r => !r.groupId).slice().reverse();
     if (ungrouped.length > 0) {
-      sheets.push({ name: uniqueName("グループ未設定"), rows: ungrouped.map(resultToRow) });
+      sheets.push({
+        name: uniqueName("グループ未設定"),
+        tabColor: "#cccccc",
+        rows: ungrouped.map(resultToRow),
+        backgrounds: ungrouped.map((r, i) => resultRowColors(r, stripe(i)))
+      });
     }
     return { token: SHEET_SYNC_TOKEN, header: RESULT_HEADERS, sheets };
   }

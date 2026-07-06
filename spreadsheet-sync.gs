@@ -46,12 +46,32 @@ function doPost(e) {
     sheetsData.forEach(function (info) {
       let sheet = ss.getSheetByName(info.name);
       if (!sheet) sheet = ss.insertSheet(info.name);
-      sheet.clearContents();
+      sheet.clear(); // 値も色もいったんリセット
+      const numCols = header.length;
       const rows = [header].concat((info.rows || []).map(function (r) {
-        return padRow(r, header.length);
+        return padRow(r, numCols);
       }));
-      sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
+      sheet.getRange(1, 1, rows.length, numCols).setValues(rows);
+
+      // ヘッダー行: グループの色で塗り、太字にする
+      sheet.getRange(1, 1, 1, numCols)
+        .setBackground(info.tabColor || "#d9b3ff")
+        .setFontWeight("bold")
+        .setFontColor("#4a3d56");
+
+      // データ行: アプリ側で計算した配色(グループ色・レール色・地球/月/太陽の色)を反映
+      if (info.backgrounds && info.backgrounds.length > 0) {
+        const bgs = info.backgrounds.map(function (r) {
+          return padRow(r, numCols).map(function (v) { return v || null; });
+        });
+        sheet.getRange(2, 1, bgs.length, numCols).setBackgrounds(bgs);
+      }
+
+      // 下のタブにもグループの色を付ける
+      try { sheet.setTabColor(info.tabColor || null); } catch (err) {}
+
       sheet.setFrozenRows(1);
+      sheet.autoResizeColumns(1, numCols);
     });
 
     // 以前このスクリプトが作成し、今回送られてこなかったシート
