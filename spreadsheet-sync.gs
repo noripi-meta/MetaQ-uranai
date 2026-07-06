@@ -1,15 +1,17 @@
 // ===================================================================
-// MetaQ 四柱推命診断アプリ → Googleスプレッドシート 同期スクリプト
+// MetaQ 四柱推命診断アプリ → Googleスプレッドシート 同期スクリプト（汎用版）
 //
-// このファイルの内容を、連携したいスプレッドシートの
-// 「拡張機能 > Apps Script」に貼り付けて、Webアプリとしてデプロイします。
-// 詳しい手順は リポジトリの SPREADSHEET_SETUP.md を参照してください。
+// このスクリプトは「表示する中身」を一切持ちません。
+// アプリが組み立てた完成形の表（値・背景色・太字・タブ色など）を
+// そのまま各シートへ貼り付けるだけの、汎用の受け取り役です。
 //
-// アプリから診断結果の一覧が送られてくると、
-// グループごとにシートを作成(なければ自動作成)して全件を書き込みます。
-// グループが削除された場合は、対応するシートも自動で削除されます。
-// ※このスクリプトが管理するシートは毎回上書きされるため、
-//   手動での編集内容は残りません。メモ等は別のシートに書いてください。
+// そのため、今後アプリ側で項目や配色・並び順を変更しても、
+// このスクリプトを貼り替える必要はありません（貼り替えは初回の一度きり）。
+//
+// 使い方（初回のみ）:
+//   スプレッドシートの「拡張機能 > Apps Script」に貼り付け、
+//   ウェブアプリとしてデプロイ（アクセス:全員）します。
+//   詳しい手順は SPREADSHEET_SETUP.md を参照してください。
 // ===================================================================
 
 // アプリ側(app.js の SHEET_SYNC_TOKEN)と同じ文字列にしてください
@@ -36,43 +38,13 @@ function doPost(e) {
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const header = data.header || [];
     const sheetsData = data.sheets || [];
     const props = PropertiesService.getScriptProperties();
     const prevManaged = JSON.parse(props.getProperty("managedSheets") || "[]");
     const currentNames = sheetsData.map(function (s) { return s.name; });
 
-    // グループごとのシートを作成・上書き
-    sheetsData.forEach(function (info) {
-      let sheet = ss.getSheetByName(info.name);
-      if (!sheet) sheet = ss.insertSheet(info.name);
-      sheet.clear(); // 値も色もいったんリセット
-      const numCols = header.length;
-      const rows = [header].concat((info.rows || []).map(function (r) {
-        return padRow(r, numCols);
-      }));
-      sheet.getRange(1, 1, rows.length, numCols).setValues(rows);
-
-      // ヘッダー行: グループの色で塗り、太字にする
-      sheet.getRange(1, 1, 1, numCols)
-        .setBackground(info.tabColor || "#d9b3ff")
-        .setFontWeight("bold")
-        .setFontColor("#4a3d56");
-
-      // データ行: アプリ側で計算した配色(グループ色・レール色・地球/月/太陽の色)を反映
-      if (info.backgrounds && info.backgrounds.length > 0) {
-        const bgs = info.backgrounds.map(function (r) {
-          return padRow(r, numCols).map(function (v) { return v || null; });
-        });
-        sheet.getRange(2, 1, bgs.length, numCols).setBackgrounds(bgs);
-      }
-
-      // 下のタブにもグループの色を付ける
-      try { sheet.setTabColor(info.tabColor || null); } catch (err) {}
-
-      sheet.setFrozenRows(1);
-      sheet.autoResizeColumns(1, numCols);
-    });
+    // アプリから届いた各シートを書き込む
+    sheetsData.forEach(function (info) { writeSheet(ss, info); });
 
     // 以前このスクリプトが作成し、今回送られてこなかったシート
     // (=アプリ側で削除されたグループ)を削除する
@@ -92,10 +64,37 @@ function doPost(e) {
   }
 }
 
-// 行の列数をヘッダーの列数に揃える(不足分は空文字で埋める)
-function padRow(row, len) {
-  const out = (row || []).slice(0, len);
-  while (out.length < len) out.push("");
+// アプリから届いた完成形の表を、解釈せずそのまま1シートへ書き込む。
+// info.values / backgrounds / fontWeights / fontColors は同じ行列サイズで渡ってくる。
+function writeSheet(ss, info) {
+  let sheet = ss.getSheetByName(info.name);
+  if (!sheet) sheet = ss.insertSheet(info.name);
+  sheet.clear(); // 値も書式もいったんリセット
+
+  const values = info.values || [];
+  const numRows = values.length;
+  const numCols = numRows ? values[0].length : 0;
+
+  if (numRows && numCols) {
+    const range = sheet.getRange(1, 1, numRows, numCols);
+    range.setValues(rect(values, numRows, numCols, ""));
+    if (info.backgrounds) range.setBackgrounds(rect(info.backgrounds, numRows, numCols, null));
+    if (info.fontWeights) range.setFontWeights(rect(info.fontWeights, numRows, numCols, "normal"));
+    if (info.fontColors)  range.setFontColors(rect(info.fontColors, numRows, numCols, null));
+    if (info.autoResize)  sheet.autoResizeColumns(1, numCols);
+  }
+  if (info.frozenRows) sheet.setFrozenRows(info.frozenRows);
+  try { sheet.setTabColor(info.tabColor || null); } catch (err) {}
+}
+
+// 二次元配列を numRows x numCols にそろえる(足りない分は fill で補い、はみ出しは切る)
+function rect(arr, numRows, numCols, fill) {
+  const out = [];
+  for (let r = 0; r < numRows; r++) {
+    const row = (arr[r] || []).slice(0, numCols);
+    while (row.length < numCols) row.push(fill);
+    out.push(row);
+  }
   return out;
 }
 

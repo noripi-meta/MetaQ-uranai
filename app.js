@@ -917,26 +917,39 @@
       return n;
     };
     const stripe = (i) => (i % 2 === 1) ? "#fdfaff" : "#ffffff";
-    const sheets = groups.map(g => {
-      // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える
-      const members = results.filter(r => r.groupId === g.id).slice().reverse();
+
+    // 1シート分を「見出し行を含む、そのまま書き込める完成形」として組み立てる。
+    // 値(values)・背景色(backgrounds)・太字(fontWeights)を同じ行列サイズで作り、
+    // GAS(spreadsheet-sync.gs)は中身を解釈せず貼り付けるだけにする。
+    // → 表示項目や配色を変えたいときは、このアプリを直すだけで反映される
+    //   (GAS側は汎用なので貼り替え不要)。
+    function makeSheet(name, tabColor, members) {
+      const values = [RESULT_HEADERS.slice()];
+      const backgrounds = [RESULT_HEADERS.map(() => tabColor || "#d9b3ff")];
+      const fontWeights = [RESULT_HEADERS.map(() => "bold")];
+      members.forEach((r, i) => {
+        values.push(resultToRow(r));
+        backgrounds.push(resultRowColors(r, stripe(i)));
+        fontWeights.push(RESULT_HEADERS.map(() => "normal"));
+      });
       return {
-        name: uniqueName(sanitizeSheetName(g.name)),
-        tabColor: g.color,
-        rows: members.map(resultToRow),
-        backgrounds: members.map((r, i) => resultRowColors(r, stripe(i)))
+        name: uniqueName(sanitizeSheetName(name)),
+        tabColor: tabColor || null,
+        frozenRows: 1,
+        autoResize: true,
+        values, backgrounds, fontWeights
       };
-    });
+    }
+
+    // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える
+    const sheets = groups.map(g =>
+      makeSheet(g.name, g.color, results.filter(r => r.groupId === g.id).slice().reverse())
+    );
     const ungrouped = results.filter(r => !r.groupId).slice().reverse();
     if (ungrouped.length > 0) {
-      sheets.push({
-        name: uniqueName("グループ未設定"),
-        tabColor: "#cccccc",
-        rows: ungrouped.map(resultToRow),
-        backgrounds: ungrouped.map((r, i) => resultRowColors(r, stripe(i)))
-      });
+      sheets.push(makeSheet("グループ未設定", "#cccccc", ungrouped));
     }
-    return { token: SHEET_SYNC_TOKEN, header: RESULT_HEADERS, sheets };
+    return { token: SHEET_SYNC_TOKEN, sheets };
   }
 
   // データ変更後に呼ぶ。連続操作(一括登録など)は1回の送信にまとめる
