@@ -472,6 +472,27 @@
     font-size:12px;
     cursor:pointer;
   }
+  .group-item .greorder{
+    display:flex;flex-direction:column;gap:3px;flex-shrink:0;
+  }
+  .group-item .greorder button{
+    border:none;background:#f0e6f7;color:var(--ink-soft);
+    width:24px;height:17px;border-radius:5px;
+    font-size:9px;line-height:1;cursor:pointer;padding:0;
+  }
+  .group-item .greorder button:disabled{opacity:0.3;cursor:default;}
+  .group-item.editing{align-items:stretch;}
+  .gedit-name{
+    width:100%;padding:9px 11px;border-radius:var(--radius-sm);
+    border:1.5px solid #e6d3ef;background:#fff;font-size:14px;color:var(--ink);
+    box-sizing:border-box;
+  }
+  .gedit-save,.gedit-cancel{
+    padding:8px 18px;border:none;border-radius:var(--radius-sm);
+    font-weight:800;font-size:13px;cursor:pointer;
+  }
+  .gedit-save{background:linear-gradient(135deg,#ffb3d9,#c6a8ff);color:#fff;}
+  .gedit-cancel{background:#f0e3f6;color:var(--ink-soft);}
   .new-group-row{
     display:flex;
     gap:8px;
@@ -851,6 +872,24 @@
         <div class="group-select-chip" id="bulk-group-chips"></div>
       </div>
       <button class="btn-primary" id="bulk-submit" style="margin-top:14px; display:none;">この内容で一括診断する</button>
+    </div>
+
+    <div class="card">
+      <h2>🗂 グループ分けして一括登録</h2>
+      <div class="field">
+        <label>名前・生年月日・時刻・グループ名（タブ区切り）</label>
+        <textarea id="gbulk-textarea" placeholder="三浦　栄紀&#9;1963/03/09&#9;&#9;友達女
+まゆゆ&#9;1987/04/21&#9;3:00&#9;友達女
+こにやん&#9;1964/01/29&#9;12:00&#9;顧客　男"></textarea>
+        <div class="hint">
+          1行に1人：<code>名前　生年月日　時刻　グループ名</code>の順（タブ区切り）。<br>
+          時刻は空欄でOK。グループは自動で作成され、各自がそのグループに登録されます。<br>
+          すでに同じ名前のグループがあれば、そのグループに追加されます（先頭に見出し行があっても自動でスキップします）。
+        </div>
+      </div>
+      <button class="btn-secondary" id="gbulk-preview-btn">内容を確認する</button>
+      <div id="gbulk-preview"></div>
+      <button class="btn-primary" id="gbulk-submit" style="margin-top:14px; display:none;">この内容でグループ分け登録する</button>
     </div>
   </div>
 

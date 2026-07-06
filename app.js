@@ -425,13 +425,68 @@
 
   async function createGroup(name) {
     const color = GROUP_COLOR_PALETTE[groups.length % GROUP_COLOR_PALETTE.length];
-    const g = { id: "g_" + Date.now() + "_" + Math.random().toString(36).slice(2,6), name, color };
+    const g = { id: "g_" + Date.now() + "_" + Math.random().toString(36).slice(2,6), name, color, _createdAt: Date.now() };
     const fs = getFS();
     if (fs) {
       try { await fs.saveGroup(g); } catch (e) { console.error(e); showToast("グループの保存に失敗しました"); return null; }
     }
+    // Firestoreの購読が反映されるまでのラグを埋めるため、即時にローカルへも追加する
+    // (一括登録で連続作成する際に、色や名前→IDの対応が正しく取れるようにする)
+    groups = [...groups, g];
+    sortGroupsInPlace();
+    refreshAllGroupUI();
     scheduleSheetSync();
     return g;
+  }
+
+  // グループの名前・色を後から編集する
+  async function editGroup(groupId, newName, newColor) {
+    const g = getGroupById(groupId);
+    if (!g) return;
+    const updated = { ...g, name: (newName != null ? newName : g.name), color: newColor || g.color };
+    const fs = getFS();
+    if (fs) {
+      try { await fs.saveGroup(updated); }
+      catch (e) { console.error(e); showToast("グループの更新に失敗しました"); return; }
+    }
+    groups = groups.map(x => x.id === groupId ? updated : x);
+    sortGroupsInPlace();
+    refreshAllGroupUI();
+    renderResults();
+    scheduleSheetSync();
+  }
+
+  // グループの表示順を1つ上/下へ入れ替える(dir: -1=上, +1=下)。
+  // 並び順はユーザー設定(settings/app の groupOrder = グループIDの配列)に保存し、
+  // どの端末でも・スプレッドシートのシート順にも反映される。
+  async function moveGroup(groupId, dir) {
+    const ids = groups.map(g => g.id);
+    const i = ids.indexOf(groupId);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    const tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+    appSettings = { ...appSettings, groupOrder: ids };
+    sortGroupsInPlace();
+    refreshAllGroupUI();
+    renderResults();
+    const fs = getFS();
+    if (fs && fs.saveSettings) {
+      try { await fs.saveSettings({ groupOrder: ids }); }
+      catch (e) { console.error(e); showToast("並び順の保存に失敗しました"); }
+    }
+    scheduleSheetSync();
+  }
+
+  // groups配列を、ユーザー設定の並び順(groupOrder)に従って並べ替える。
+  // 未設定・新規グループは末尾に作成順で並ぶ。
+  function sortGroupsInPlace() {
+    const order = (appSettings && Array.isArray(appSettings.groupOrder)) ? appSettings.groupOrder : [];
+    const rank = (id) => { const idx = order.indexOf(id); return idx === -1 ? Infinity : idx; };
+    groups.sort((a, b) => {
+      const ra = rank(a.id), rb = rank(b.id);
+      if (ra !== rb) return ra - rb;
+      return (a._createdAt || 0) - (b._createdAt || 0);
+    });
   }
 
   async function deleteGroupById(groupId) {
@@ -465,6 +520,7 @@
   });
   window.addEventListener("metaq:groups-updated", (e) => {
     groups = e.detail.groups || [];
+    sortGroupsInPlace();
     renderResults();
     refreshAllGroupUI();
   });
@@ -803,6 +859,91 @@
     container.innerHTML = html;
   }
 
+  // ---------- グループ列つき一括登録 ----------
+  // 「名前 / 生年月日 / 時刻 / グループ名」のタブ区切りを解析する。
+  // グループごとに振り分けて登録するための専用パーサ(既存のまとめて登録とは別物)。
+  function parseGroupBulkText(text) {
+    const lines = text.split("\n").map(l => l.replace(/\r$/, "")).filter(l => l.trim().length > 0);
+    const rows = [];
+    lines.forEach((line, i) => {
+      const cols = line.split("\t");
+      const parts = cols.length >= 2 ? cols : line.split(/,|\s{2,}/);
+      const name = (parts[0] || "").trim();
+      const dateStr = (parts[1] || "").trim();
+      const timeStr = (parts[2] || "").trim();
+      const groupName = (parts[3] || "").trim();
+
+      const date = parseFlexibleDate(dateStr);
+      // 見出し行や空行(名前も日付も無い)は静かにスキップする
+      if (!name && !date) return;
+
+      const time = parseFlexibleTime(timeStr);
+      let error = null;
+      if (!date) error = "生年月日が読み取れません";
+      else if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) error = "日付の値が不正です";
+      else if (!groupName) error = "グループ名がありません";
+
+      rows.push({
+        lineNo: i + 1, name, dateStr, timeStr, groupName,
+        y: date ? date.y : null, m: date ? date.m : null, d: date ? date.d : null,
+        h: time ? time.h : null, mi: time ? time.mi : null,
+        error
+      });
+    });
+    return rows;
+  }
+
+  function renderGroupBulkPreview(rows) {
+    const container = document.getElementById("gbulk-preview");
+    const valid = rows.filter(r => !r.error);
+    const errCount = rows.length - valid.length;
+    const existingNames = new Set(groups.map(g => g.name));
+    const groupNames = [...new Set(valid.map(r => r.groupName))];
+    const newGroups = groupNames.filter(n => !existingNames.has(n));
+
+    let html = `<div class="hint" style="margin-top:14px;">
+      ${rows.length}件中 <b>${valid.length}件 登録OK</b>${errCount > 0 ? `／<span style="color:#e0648a;">${errCount}件 エラー</span>` : ""}<br>
+      グループ ${groupNames.length}種類${newGroups.length > 0 ? `（うち新規作成 <b>${newGroups.length}</b>：${newGroups.map(escapeHtml).join("、")}）` : ""}
+    </div>`;
+    html += `<table class="preview-table"><thead><tr>
+      <th>#</th><th>名前</th><th>生年月日</th><th>時刻</th><th>グループ</th><th>状態</th>
+    </tr></thead><tbody>`;
+    rows.forEach(r => {
+      const rowClass = r.error ? "err-row" : "";
+      html += `<tr class="${rowClass}">
+        <td>${r.lineNo}</td>
+        <td>${escapeHtml(r.name || "—")}</td>
+        <td>${escapeHtml(r.dateStr || "—")}</td>
+        <td>${escapeHtml(r.timeStr || "—")}</td>
+        <td>${escapeHtml(r.groupName || "—")}</td>
+        <td>${r.error ? "⚠️ " + r.error : "✓ OK"}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  }
+
+  async function confirmGroupBulkImport(rows) {
+    const valid = rows.filter(r => !r.error);
+    if (valid.length === 0) { showToast("登録できる行がありません"); return; }
+
+    // グループ名 -> ID の対応表。既存グループは名前で照合し、無いものだけ新規作成する。
+    const nameToId = {};
+    groups.forEach(g => { if (!(g.name in nameToId)) nameToId[g.name] = g.id; });
+    const neededNames = [];
+    valid.forEach(r => {
+      if (!nameToId[r.groupName] && neededNames.indexOf(r.groupName) === -1) neededNames.push(r.groupName);
+    });
+    for (const gname of neededNames) {
+      const g = await createGroup(gname);
+      if (g) nameToId[gname] = g.id;
+    }
+
+    for (const r of valid) {
+      await addResult(r.name, r.y, r.m, r.d, r.h, r.mi, nameToId[r.groupName] || null);
+    }
+  }
+
   // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
   const RESULT_HEADERS = ["性","名","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
 
@@ -864,6 +1005,10 @@
     const input = document.getElementById("sheet-url-input");
     if (input && document.activeElement !== input) input.value = appSettings.sheetUrl || "";
     updateSheetSyncStatusIdle();
+    // 並び順設定(groupOrder)が届いたらグループ表示に反映する
+    sortGroupsInPlace();
+    refreshAllGroupUI();
+    renderResults();
   });
 
   function getSheetUrl() {
@@ -1030,6 +1175,8 @@
     renderAggregateGroupSelect();
   }
 
+  let editingGroupId = null; // 編集中のグループID(インライン編集フォームを表示)
+
   function renderGroupManageList() {
     const list = document.getElementById("group-list");
     if (groups.length === 0) {
@@ -1039,16 +1186,71 @@
       </div>`;
       return;
     }
-    list.innerHTML = groups.map(g => {
+    list.innerHTML = groups.map((g, idx) => {
       const count = results.filter(r => r.groupId === g.id).length;
+      if (g.id === editingGroupId) {
+        const swatches = GROUP_COLOR_PALETTE.map(c =>
+          `<button class="swatch-btn ${c === g.color ? "selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+        ).join("");
+        return `
+        <div class="group-item editing">
+          <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
+            <input type="text" class="gedit-name" value="${escapeHtml(g.name)}" placeholder="グループ名">
+            <div class="color-picker">${swatches}</div>
+            <div style="display:flex; gap:8px;">
+              <button class="gedit-save" data-gid="${g.id}">保存</button>
+              <button class="gedit-cancel">キャンセル</button>
+            </div>
+          </div>
+        </div>`;
+      }
       return `
       <div class="group-item">
+        <div class="greorder">
+          <button class="gup-btn" data-gid="${g.id}" ${idx === 0 ? "disabled" : ""} title="上へ">▲</button>
+          <button class="gdown-btn" data-gid="${g.id}" ${idx === groups.length - 1 ? "disabled" : ""} title="下へ">▼</button>
+        </div>
         <span class="swatch" style="background:${g.color}"></span>
         <span class="gname">${escapeHtml(g.name)}</span>
         <span class="gcount">${count}人</span>
+        <button class="gedit-btn" data-gid="${g.id}" title="編集">✎</button>
         <button class="gdel-btn" data-gid="${g.id}" title="削除">×</button>
       </div>`;
     }).join("");
+
+    // 並べ替え
+    list.querySelectorAll(".gup-btn").forEach(b => b.addEventListener("click", () => moveGroup(b.dataset.gid, -1)));
+    list.querySelectorAll(".gdown-btn").forEach(b => b.addEventListener("click", () => moveGroup(b.dataset.gid, 1)));
+
+    // 編集を開始
+    list.querySelectorAll(".gedit-btn").forEach(b => b.addEventListener("click", () => {
+      editingGroupId = b.dataset.gid;
+      renderGroupManageList();
+    }));
+    // 編集中: 色選択
+    list.querySelectorAll(".color-picker .swatch-btn").forEach(b => b.addEventListener("click", () => {
+      list.querySelectorAll(".color-picker .swatch-btn").forEach(x => x.classList.remove("selected"));
+      b.classList.add("selected");
+    }));
+    // 編集: キャンセル
+    list.querySelectorAll(".gedit-cancel").forEach(b => b.addEventListener("click", () => {
+      editingGroupId = null;
+      renderGroupManageList();
+    }));
+    // 編集: 保存
+    list.querySelectorAll(".gedit-save").forEach(b => b.addEventListener("click", async () => {
+      const item = b.closest(".group-item");
+      const name = item.querySelector(".gedit-name").value.trim();
+      const sel = item.querySelector(".color-picker .swatch-btn.selected");
+      const color = sel ? sel.dataset.color : null;
+      if (!name) { showToast("グループ名を入力してください"); return; }
+      const gid = b.dataset.gid;
+      editingGroupId = null;
+      await editGroup(gid, name, color);
+      showToast("グループを更新しました");
+    }));
+
+    // 削除
     list.querySelectorAll(".gdel-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         const g = getGroupById(btn.dataset.gid);
@@ -1390,6 +1592,39 @@
       document.getElementById("bulk-submit").style.display = "none";
       switchTab("results");
       showToast(`${validRows.length}件を一括登録しました`);
+    });
+
+    // グループ分けして一括登録 - プレビュー
+    let lastGroupBulkRows = [];
+    document.getElementById("gbulk-preview-btn").addEventListener("click", () => {
+      const text = document.getElementById("gbulk-textarea").value;
+      if (!text.trim()) { showToast("テキストを入力してください"); return; }
+      lastGroupBulkRows = parseGroupBulkText(text);
+      renderGroupBulkPreview(lastGroupBulkRows);
+      const okCount = lastGroupBulkRows.filter(r => !r.error).length;
+      document.getElementById("gbulk-submit").style.display = okCount > 0 ? "block" : "none";
+    });
+
+    // グループ分けして一括登録 - 確定
+    document.getElementById("gbulk-submit").addEventListener("click", async () => {
+      const btn = document.getElementById("gbulk-submit");
+      const valid = lastGroupBulkRows.filter(r => !r.error);
+      if (valid.length === 0) { showToast("登録できる行がありません"); return; }
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = `登録中… (${valid.length}件)`;
+      showToast(`${valid.length}件を登録中です。少しお待ちください…`);
+      try {
+        await confirmGroupBulkImport(lastGroupBulkRows);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+      document.getElementById("gbulk-textarea").value = "";
+      document.getElementById("gbulk-preview").innerHTML = "";
+      btn.style.display = "none";
+      switchTab("results");
+      showToast(`${valid.length}件をグループ分け登録しました`);
     });
 
     // 診断結果 - グループフィルター
