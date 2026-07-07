@@ -290,6 +290,22 @@
   }
   .redit-save{background:linear-gradient(135deg,#ffb3d9,#c6a8ff);color:#fff;}
   .redit-cancel{background:#f0e3f6;color:var(--ink-soft);}
+  .lib-search{
+    width:100%;
+    box-sizing:border-box;
+    padding:12px 14px;
+    border-radius:var(--radius-sm);
+    border:1.5px solid #e6d3ef;
+    background:#fff;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .lib-desc{
+    padding:0 18px 12px;
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--ink-soft);
+  }
 
   .classify-strip{
     display:flex;
@@ -994,6 +1010,9 @@
       <h1 style="font-size:22px;">📚 図書館</h1>
       <p>誰もが知っている有名人・スポーツ選手・偉人の診断コレクション</p>
     </header>
+    <div class="card" style="padding:14px;">
+      <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前や「何をした人か」で検索（例：物理、画家、ノーベル）">
+    </div>
     <div id="library-content"></div>
   </div>
 
