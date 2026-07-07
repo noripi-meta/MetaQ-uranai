@@ -100,7 +100,7 @@ onAuthStateChanged(auth, (user) => {
     currentUser = user;
     clearRedirectInProgressFlag();
     showAppScreen(user);
-    window.dispatchEvent(new CustomEvent("metaq:auth-ready", { detail: { uid: user.uid } }));
+    window.dispatchEvent(new CustomEvent("metaq:auth-ready", { detail: { uid: user.uid, email: user.email || "" } }));
     subscribeToData(user.uid);
   } else {
     currentUser = null;

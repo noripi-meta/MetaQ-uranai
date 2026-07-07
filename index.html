@@ -243,7 +243,12 @@
     color:var(--ink-soft);
     margin-top:2px;
   }
-  .result-head .del-btn{
+  .result-head .head-btns{
+    display:flex;
+    gap:6px;
+    flex-shrink:0;
+  }
+  .result-head .del-btn, .result-head .redit-btn{
     border:none;
     background:#f7eef9;
     color:var(--ink-soft);
@@ -253,6 +258,38 @@
     font-size:14px;
     cursor:pointer;
   }
+  .edit-form{
+    padding:6px 18px 18px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .edit-form input{
+    width:100%;
+    box-sizing:border-box;
+    padding:9px 11px;
+    border-radius:var(--radius-sm);
+    border:1.5px solid #e6d3ef;
+    background:#fff;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .edit-form label{
+    display:block;
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-bottom:4px;
+  }
+  .redit-save, .redit-cancel{
+    padding:9px 20px;
+    border:none;
+    border-radius:var(--radius-sm);
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .redit-save{background:linear-gradient(135deg,#ffb3d9,#c6a8ff);color:#fff;}
+  .redit-cancel{background:#f0e3f6;color:var(--ink-soft);}
 
   .classify-strip{
     display:flex;
@@ -823,6 +860,7 @@
     <button class="tab-btn" data-tab="results">診断結果</button>
     <button class="tab-btn" data-tab="groups">グループ管理</button>
     <button class="tab-btn" data-tab="aggregate">グループ集計</button>
+    <button class="tab-btn" data-tab="library" id="tab-library" style="display:none;">📚 図書館</button>
   </div>
 
   <!-- 1人ずつ入力 -->
@@ -948,6 +986,15 @@
       <select id="aggregate-group-select"></select>
     </div>
     <div id="aggregate-content"></div>
+  </div>
+
+  <!-- 診断図書館（管理者のみ） -->
+  <div class="panel" id="panel-library">
+    <header class="hero" style="padding-bottom:6px;">
+      <h1 style="font-size:22px;">📚 図書館</h1>
+      <p>誰もが知っている有名人・スポーツ選手・偉人の診断コレクション</p>
+    </header>
+    <div id="library-content"></div>
   </div>
 
 </div>

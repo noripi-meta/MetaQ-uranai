@@ -665,9 +665,66 @@
     </div>`;
   }
 
+  let editingResultId = null; // 個別編集中の結果ID
+
+  // 個別の診断結果の 名前・生年月日・時刻・備考 を編集して保存する。
+  // 生年月日/時刻が変わると命式を計算し直す。
+  async function editResult(id, name, dateStr, timeStr, note) {
+    const r = results.find(x => x.id === id);
+    if (!r) return false;
+    const date = parseFlexibleDate(dateStr);
+    if (!date || date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) {
+      showToast("生年月日を正しい形式で入力してください（例：1990/06/24）");
+      return false;
+    }
+    const time = parseFlexibleTime(timeStr);
+    const h = time ? time.h : null;
+    const mi = time ? time.mi : null;
+    const pad = (n) => String(n).padStart(2, "0");
+    const updated = {
+      ...r,
+      name: name || "（名前未入力）",
+      sei: "", mei: "",
+      note: note || "",
+      birthDate: `${date.y}/${pad(date.m)}/${pad(date.d)}`,
+      birthTime: (h !== null && h !== undefined) ? `${pad(h)}:${pad(mi || 0)}` : "",
+      calc: calcFourPillars(date.y, date.m, date.d, h, mi)
+    };
+    const fs = getFS();
+    if (fs) {
+      try { await fs.saveResult(updated); }
+      catch (e) { console.error(e); showToast("保存に失敗しました"); return false; }
+    }
+    results = results.map(x => x.id === id ? updated : x);
+    renderResults();
+    scheduleSheetSync();
+    return true;
+  }
+
   function renderResultCard(entry) {
     const c = entry.calc;
     const group = entry.groupId ? getGroupById(entry.groupId) : null;
+
+    // 編集中はこのカードを編集フォームに差し替える
+    if (entry.id === editingResultId) {
+      const editName = (entry.sei || entry.mei)
+        ? [entry.sei, entry.mei].filter(Boolean).join(" ")
+        : (entry.name === "（名前未入力）" ? "" : entry.name);
+      return `
+      <div class="result-card">
+        <div class="result-head"><div><div class="name">✎ 編集中</div></div></div>
+        <div class="edit-form">
+          <div class="field"><label>名前</label><input type="text" class="edit-name" value="${escapeHtml(editName)}" placeholder="名前"></div>
+          <div class="field"><label>生年月日</label><input type="text" class="edit-date" value="${escapeHtml(entry.birthDate || "")}" placeholder="1990/06/24"></div>
+          <div class="field"><label>時刻（任意・空欄OK）</label><input type="text" class="edit-time" value="${escapeHtml(entry.birthTime || "")}" placeholder="14:30"></div>
+          <div class="field"><label>備考（任意）</label><input type="text" class="edit-note" value="${escapeHtml(entry.note || "")}" placeholder="メモ"></div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <button class="redit-save" data-id="${entry.id}">保存</button>
+            <button class="redit-cancel">キャンセル</button>
+          </div>
+        </div>
+      </div>`;
+    }
     const groupBadge = group
       ? `<div class="name-group-badge"><span class="swatch" style="background:${group.color}"></span>${escapeHtml(group.name)}</div>`
       : `<div class="name-group-badge" style="color:#cfc3d6;">グループ未設定</div>`;
@@ -690,7 +747,10 @@
           <div class="birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</div>
           ${groupBadge}
         </div>
-        <button class="del-btn" data-id="${entry.id}" title="削除">×</button>
+        <div class="head-btns">
+          <button class="redit-btn" data-id="${entry.id}" title="編集">✎</button>
+          <button class="del-btn" data-id="${entry.id}" title="削除">×</button>
+        </div>
       </div>
       <div style="padding:0 18px 10px;">
         <select class="group-reassign" data-id="${entry.id}" style="width:100%; padding:8px 10px; border-radius:10px; border:1.5px solid #f0e3f6; background:#fdfaff; font-size:12px; color:var(--ink);">
@@ -763,6 +823,28 @@
     });
     list.querySelectorAll(".group-reassign").forEach(sel => {
       sel.addEventListener("change", () => setResultGroup(sel.dataset.id, sel.value));
+    });
+    // 個別編集を開始
+    list.querySelectorAll(".redit-btn").forEach(btn => {
+      btn.addEventListener("click", () => { editingResultId = btn.dataset.id; renderResults(); });
+    });
+    // 編集: キャンセル
+    list.querySelectorAll(".redit-cancel").forEach(btn => {
+      btn.addEventListener("click", () => { editingResultId = null; renderResults(); });
+    });
+    // 編集: 保存
+    list.querySelectorAll(".redit-save").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest(".result-card");
+        const name = card.querySelector(".edit-name").value.trim();
+        const dateStr = card.querySelector(".edit-date").value;
+        const timeStr = card.querySelector(".edit-time").value;
+        const note = card.querySelector(".edit-note").value.trim();
+        if (!parseFlexibleDate(dateStr)) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
+        editingResultId = null;
+        const ok = await editResult(btn.dataset.id, name, dateStr, timeStr, note);
+        if (ok) showToast("編集を保存しました");
+      });
     });
   }
 
@@ -1517,6 +1599,116 @@
 
 
   // ===================================================================
+  // 診断図書館（管理者のみ）
+  // 誰もが知っている有名人・スポーツ選手・偉人の診断一覧。ジャンル別に表示する。
+  // これはアプリ内蔵の参照データ(Firestoreの個人データとは別)で、全員同じ内容。
+  // 管理者(orn.pomme@gmail.com)でログインしたときだけ「図書館」タブが表示される。
+  // 生年月日は公開情報に基づく。出生時刻は不明のため未使用。
+  // ===================================================================
+  const ADMIN_EMAIL = "orn.pomme@gmail.com";
+
+  const LIBRARY_PEOPLE = [
+    // スポーツ
+    { genre: "スポーツ", name: "大谷 翔平", date: "1994/07/05" },
+    { genre: "スポーツ", name: "イチロー", date: "1973/10/22" },
+    { genre: "スポーツ", name: "羽生 結弦", date: "1994/12/07" },
+    { genre: "スポーツ", name: "錦織 圭", date: "1989/12/29" },
+    { genre: "スポーツ", name: "本田 圭佑", date: "1986/06/13" },
+    { genre: "スポーツ", name: "三浦 知良", date: "1967/02/26" },
+    { genre: "スポーツ", name: "リオネル・メッシ", date: "1987/06/24" },
+    { genre: "スポーツ", name: "クリスティアーノ・ロナウド", date: "1985/02/05" },
+    // 音楽
+    { genre: "音楽", name: "宇多田 ヒカル", date: "1983/01/19" },
+    { genre: "音楽", name: "米津 玄師", date: "1991/03/10" },
+    { genre: "音楽", name: "桑田 佳祐", date: "1956/02/26" },
+    { genre: "音楽", name: "松任谷 由実", date: "1954/01/19" },
+    { genre: "音楽", name: "坂本 龍一", date: "1952/01/17" },
+    { genre: "音楽", name: "マイケル・ジャクソン", date: "1958/08/29" },
+    { genre: "音楽", name: "テイラー・スウィフト", date: "1989/12/13" },
+    // 芸能・エンタメ
+    { genre: "芸能・エンタメ", name: "タモリ", date: "1945/08/22" },
+    { genre: "芸能・エンタメ", name: "ビートたけし（北野 武）", date: "1947/01/18" },
+    { genre: "芸能・エンタメ", name: "明石家 さんま", date: "1955/07/01" },
+    { genre: "芸能・エンタメ", name: "木村 拓哉", date: "1972/11/13" },
+    { genre: "芸能・エンタメ", name: "新垣 結衣", date: "1988/06/11" },
+    { genre: "芸能・エンタメ", name: "綾瀬 はるか", date: "1985/03/24" },
+    { genre: "芸能・エンタメ", name: "レオナルド・ディカプリオ", date: "1974/11/11" },
+    // 実業家
+    { genre: "実業家", name: "スティーブ・ジョブズ", date: "1955/02/24" },
+    { genre: "実業家", name: "ビル・ゲイツ", date: "1955/10/28" },
+    { genre: "実業家", name: "イーロン・マスク", date: "1971/06/28" },
+    { genre: "実業家", name: "孫 正義", date: "1957/08/11" },
+    { genre: "実業家", name: "松下 幸之助", date: "1894/11/27" },
+    { genre: "実業家", name: "稲盛 和夫", date: "1932/01/21" },
+    // 偉人・歴史
+    { genre: "偉人・歴史", name: "福澤 諭吉", date: "1835/01/10" },
+    { genre: "偉人・歴史", name: "渋沢 栄一", date: "1840/03/16" },
+    { genre: "偉人・歴史", name: "アルベルト・アインシュタイン", date: "1879/03/14" },
+    { genre: "偉人・歴史", name: "エイブラハム・リンカーン", date: "1809/02/12" },
+    { genre: "偉人・歴史", name: "マハトマ・ガンジー", date: "1869/10/02" },
+  ];
+
+  let libraryRendered = false;
+
+  function updateAdminUI(email) {
+    const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
+    const tabBtn = document.getElementById("tab-library");
+    if (tabBtn) tabBtn.style.display = isAdmin ? "" : "none";
+    if (isAdmin && !libraryRendered) { renderLibrary(); libraryRendered = true; }
+  }
+
+  window.addEventListener("metaq:auth-ready", (e) => {
+    updateAdminUI(e.detail && e.detail.email);
+  });
+
+  function libraryCardHtml(name, birthDate, c) {
+    return `
+    <div class="result-card">
+      <div class="result-head">
+        <div>
+          <div class="name">${escapeHtml(name)}</div>
+          <div class="birth">${escapeHtml(birthDate)}</div>
+        </div>
+      </div>
+      <div class="classify-strip">
+        <div class="row-top">
+          <span class="num">No.${String(c.bunrui60).padStart(2, "0")}</span>
+          <span class="gz">${c.bunrui60_gz}　${c.bunrui60_kanGroup}</span>
+          ${groupChipHtml(c.honshitsu.group)}
+        </div>
+        <div class="chara-name">${escapeHtml(c.bunrui60_charaName)}</div>
+        <div class="fuku-badge">福の神No. <span class="fuku-num">${c.fukuNoKami.label}</span></div>
+        <div class="rail-badge">レール <span class="rail-num">${escapeHtml(c.rail.rail)}</span><span class="rail-sub">（${escapeHtml(c.rail.tsuhensei)}）</span></div>
+      </div>
+      <div class="pillars">
+        ${pillarBoxHtml("本質", c.honshitsu)}
+        ${pillarBoxHtml("表面", c.hyomen)}
+        ${pillarBoxHtml("意思", c.ishi)}
+      </div>
+    </div>`;
+  }
+
+  function renderLibrary() {
+    const container = document.getElementById("library-content");
+    if (!container) return;
+    const byGenre = {};
+    LIBRARY_PEOPLE.forEach(p => { (byGenre[p.genre] = byGenre[p.genre] || []).push(p); });
+    let html = `<div class="hint" style="margin-bottom:14px;">
+      誰もが知っている有名人・スポーツ選手・偉人の診断一覧です（生年月日は公開情報に基づきます／出生時刻は不明のため未使用）。
+    </div>`;
+    Object.keys(byGenre).forEach(genre => {
+      html += `<div class="card"><h2>📖 ${escapeHtml(genre)}</h2>`;
+      byGenre[genre].forEach(p => {
+        const d = parseFlexibleDate(p.date);
+        const c = calcFourPillars(d.y, d.m, d.d, null, null);
+        html += libraryCardHtml(p.name, p.date, c);
+      });
+      html += `</div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  // ===================================================================
   // イベント登録
   // ===================================================================
 
@@ -1543,6 +1735,7 @@
         if (btn.dataset.tab === "groups") renderGroupManageList();
         if (btn.dataset.tab === "aggregate") renderAggregateGroupSelect();
         if (btn.dataset.tab === "results") renderResults();
+        if (btn.dataset.tab === "library") renderLibrary();
       });
     });
 
