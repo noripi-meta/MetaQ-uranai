@@ -531,6 +531,16 @@
     return r.groupId ? [r.groupId] : [];
   }
 
+  // 重複判定用に名前を正規化(全角/半角スペースを除去)
+  function normalizePersonName(r) {
+    const base = (r.sei || r.mei) ? (r.sei || "") + (r.mei || "") : (r.name || "");
+    return String(base).replace(/[\s　]/g, "");
+  }
+  // 同じ名前(スペース無視)＋同じ生年月日の既存の人を探す
+  function findDuplicate(nameNorm, birthDate) {
+    return results.find(r => normalizePersonName(r) === nameNorm && r.birthDate === birthDate) || null;
+  }
+
   // Firebase側からのリアルタイム更新を受け取り、メモリ上のキャッシュを更新して再描画する
   window.addEventListener("metaq:results-updated", (e) => {
     results = e.detail.results || [];
@@ -541,6 +551,26 @@
   window.addEventListener("metaq:groups-updated", (e) => {
     groups = e.detail.groups || [];
     sortGroupsInPlace();
+    renderResults();
+    refreshAllGroupUI();
+  });
+  // ログアウト時: メモリ上の全キャッシュと選択状態を白紙に戻す
+  window.addEventListener("metaq:signed-out", () => {
+    results = [];
+    groups = [];
+    appSettings = {};
+    dataReady = false;
+    currentUid = null;
+    selectedSingleGroupIds = [];
+    selectedBulkGroupId = null;
+    editingResultId = null;
+    editingGroupId = null;
+    libraryRendered = false;
+    if (sheetSyncTimer) { clearTimeout(sheetSyncTimer); sheetSyncTimer = null; }
+    // 管理者用の図書館タブも隠し、通常タブへ戻す
+    const libTab = document.getElementById("tab-library");
+    if (libTab) libTab.style.display = "none";
+    switchTab("single");
     renderResults();
     refreshAllGroupUI();
   });
@@ -593,6 +623,11 @@
     return null;
   }
 
+  // 実在する時刻か(0〜23時・0〜59分)
+  function isValidHm(h, mi) {
+    return h >= 0 && h <= 23 && mi >= 0 && mi <= 59;
+  }
+
   function parseFlexibleTime(str) {
     str = normalizeNumericString(str);
     if (!str) return null;
@@ -600,18 +635,15 @@
     let compact = str.replace(/(\d)\s+(?=\d)/g, "$1").replace(/\s+/g, "");
 
     let m = compact.match(/^(\d{1,2})[:時](\d{1,2})分?$/);
-    if (m) return { h: +m[1], mi: +m[2] };
+    if (m) return isValidHm(+m[1], +m[2]) ? { h: +m[1], mi: +m[2] } : null;
 
     // 区切りなし4桁 (2256 -> 22:56)
     m = compact.match(/^(\d{2})(\d{2})$/);
-    if (m) {
-      const hh = +m[1], mm = +m[2];
-      if (hh <= 23 && mm <= 59) return { h: hh, mi: mm };
-    }
+    if (m) return isValidHm(+m[1], +m[2]) ? { h: +m[1], mi: +m[2] } : null;
 
     // 時のみ
     m = compact.match(/^(\d{1,2})$/);
-    if (m) return { h: +m[1], mi: 0 };
+    if (m) return isValidHm(+m[1], 0) ? { h: +m[1], mi: 0 } : null;
 
     return null;
   }
@@ -624,10 +656,10 @@
     return `${String(parsed.h).padStart(2,"0")}:${String(parsed.mi).padStart(2,"0")}`;
   }
 
-  async function addResult(name, y, m, d, h, mi, groupIds, note, sei, mei) {
-    const calc = calcFourPillars(y, m, d, h, mi);
+  // 診断結果1件分のデータを作る(保存はしない)。単発登録と一括登録で共用。
+  function makeResultEntry(name, y, m, d, h, mi, groupIds, note, sei, mei, createdAt) {
     const gids = Array.isArray(groupIds) ? groupIds.filter(Boolean) : (groupIds ? [groupIds] : []);
-    const entry = {
+    return {
       id: "r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       name: name || "（名前未入力）",
       sei: sei || "",
@@ -636,17 +668,72 @@
       birthDate: `${y}/${String(m).padStart(2,"0")}/${String(d).padStart(2,"0")}`,
       birthTime: (h !== null && h !== undefined) ? `${String(h).padStart(2,"0")}:${String(mi||0).padStart(2,"0")}` : "",
       groupIds: gids,
-      calc
+      calc: calcFourPillars(y, m, d, h, mi),
+      _createdAt: createdAt || Date.now()
     };
+  }
+
+  async function addResult(name, y, m, d, h, mi, groupIds, note, sei, mei) {
+    const entry = makeResultEntry(name, y, m, d, h, mi, groupIds, note, sei, mei);
     const fs = getFS();
     if (fs) {
-      try { await fs.saveResult(entry); } catch (e) { console.error(e); showToast("保存に失敗しました"); }
+      // 保存に失敗したら画面・シートには反映しない(あるように見えて実は消える事故を防ぐ)
+      try { await fs.saveResult(entry); }
+      catch (e) { console.error(e); showToast("保存に失敗しました"); return false; }
     }
     // Firestoreのリアルタイム購読が結果を反映するまでの一瞬のラグを埋めるため、
     // 画面には即時反映しておく(購読イベントが届くと正しい状態に上書きされる)
     results = [entry, ...results];
     renderResults();
     scheduleSheetSync();
+    return true;
+  }
+
+  // 全員の診断内容(calc)を、今の最新ロジックで計算し直す。
+  // 診断ロジックを直したとき、既存の保存済みデータにも反映するために使う。
+  // 生年月日・時刻から計算し直し、内容が変わった人だけまとめて保存する。
+  async function recalcAllResults() {
+    if (results.length === 0) { showToast("診断結果がありません"); return; }
+    const changed = [];
+    results.forEach(r => {
+      const d = parseFlexibleDate(r.birthDate);
+      if (!d) return; // 生年月日が読み取れないものは触らない
+      const t = r.birthTime ? parseFlexibleTime(r.birthTime) : null;
+      const h = t ? t.h : null, mi = t ? t.mi : null;
+      const newCalc = calcFourPillars(d.y, d.m, d.d, h, mi);
+      if (JSON.stringify(newCalc) !== JSON.stringify(r.calc)) {
+        changed.push({ ...r, calc: newCalc });
+      }
+    });
+    if (changed.length === 0) { showToast("計算し直しました。変わった人はいませんでした"); return; }
+    if (!confirm(`${changed.length}人の診断内容が新しい計算で更新されます。よろしいですか？`)) return;
+    const fs = getFS();
+    if (fs && fs.saveResultsBatch) {
+      try { await fs.saveResultsBatch(changed); }
+      catch (e) { console.error(e); showToast("保存に失敗しました"); return; }
+    }
+    const byId = {};
+    changed.forEach(c => { byId[c.id] = c; });
+    results = results.map(r => byId[r.id] || r);
+    renderResults();
+    refreshAllGroupUI();
+    scheduleSheetSync();
+    showToast(`${changed.length}人の診断を更新しました`);
+  }
+
+  // 複数件をまとめて登録する(一括登録の高速化)。まとめ書きで一度に保存する。
+  async function addResultsBulk(entries) {
+    if (entries.length === 0) return true;
+    const fs = getFS();
+    if (fs && fs.saveResultsBatch) {
+      try { await fs.saveResultsBatch(entries); }
+      catch (e) { console.error(e); showToast("保存に失敗しました"); return false; }
+    }
+    // 画面には登録順(古い順)で先頭が最新になるよう、逆順で前に積む
+    results = [...entries.slice().reverse(), ...results];
+    renderResults();
+    scheduleSheetSync();
+    return true;
   }
 
   async function deleteResult(id) {
@@ -1054,7 +1141,7 @@
 
   async function confirmGroupBulkImport(rows) {
     const valid = rows.filter(r => !r.error);
-    if (valid.length === 0) { showToast("登録できる行がありません"); return; }
+    if (valid.length === 0) { showToast("登録できる行がありません"); return false; }
 
     // グループ名 -> ID の対応表。既存グループは名前で照合し、無いものだけ新規作成する。
     const nameToId = {};
@@ -1068,9 +1155,12 @@
       if (g) nameToId[gname] = g.id;
     }
 
-    for (const r of valid) {
-      await addResult(r.name, r.y, r.m, r.d, r.h, r.mi, nameToId[r.groupName] || null);
-    }
+    // 全件をまとめて1回で保存する(1件ずつawaitしない)。
+    // _createdAtを1msずつずらして、入力順(古い→新しい)が保たれるようにする。
+    const base = Date.now();
+    const entries = valid.map((r, i) =>
+      makeResultEntry(r.name, r.y, r.m, r.d, r.h, r.mi, nameToId[r.groupName] || null, "", "", "", base + i));
+    return await addResultsBulk(entries);
   }
 
   // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
@@ -1097,7 +1187,8 @@
   function exportCsv() {
     if (results.length === 0) { showToast("診断結果がありません"); return; }
     const lines = [RESULT_HEADERS.join(",")];
-    results.forEach(r => {
+    // resultsは新しい順なので、CSVでは登録順(古い順)に並べる(スプレッドシートと揃える)
+    results.slice().reverse().forEach(r => {
       const row = resultToRow(r).map(v => `"${String(v).replace(/"/g,'""')}"`);
       lines.push(row.join(","));
     });
@@ -1278,8 +1369,15 @@
         throw new Error((data && data.error) || `HTTP ${res.status}`);
       }
       const t = new Date();
-      setSheetSyncStatus(`✓ スプレッドシートに同期済み（${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}）`);
-      if (manual) showToast("スプレッドシートに同期しました");
+      const hhmm = `${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}`;
+      if (data.skipped && data.skipped.length > 0) {
+        // 手作りの中身ありシートと名前が被って書き込めなかったグループがある
+        setSheetSyncStatus(`⚠️ 同期しましたが、次のシートは手書きの内容があるため書き込めませんでした：${data.skipped.join("、")}（グループ名を変えるか、そのシートを空にしてください）`);
+        if (manual) showToast(`一部書き込めませんでした：${data.skipped.join("、")}`);
+      } else {
+        setSheetSyncStatus(`✓ スプレッドシートに同期済み（${hhmm}）`);
+        if (manual) showToast("スプレッドシートに同期しました");
+      }
     } catch (e) {
       console.error("sheet sync failed:", e);
       if (String(e.message).includes("different-account")) {
@@ -1873,7 +1971,15 @@
     const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
     const tabBtn = document.getElementById("tab-library");
     if (tabBtn) tabBtn.style.display = isAdmin ? "" : "none";
-    if (isAdmin && !libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
+    if (isAdmin) {
+      if (!libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
+    } else {
+      // 管理者以外がログインしたら、図書館を閉じて通常タブへ戻す
+      // (前の管理者が図書館タブを開いたまま切り替えたときの残り対策)
+      libraryRendered = false;
+      const libPanel = document.getElementById("panel-library");
+      if (libPanel && libPanel.classList.contains("active")) switchTab("single");
+    }
   }
 
   window.addEventListener("metaq:auth-ready", (e) => {
@@ -2020,14 +2126,21 @@
 
       const date = parseFlexibleDate(dateVal);
       if (!date) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
-      if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) { showToast("日付の値が正しくありません"); return; }
       if (selectedSingleGroupIds.length === 0) { showToast("グループを1つ以上選択してください"); return; }
 
       const time = parseFlexibleTime(timeVal);
+      // 時刻を入力したのに読み取れない(25:30など)場合は登録せず知らせる
+      if (timeVal.trim() && !time) { showToast("時刻は0〜23時・0〜59分で入力してください（空欄でもOK）"); return; }
       const h = time ? time.h : null;
       const mi = time ? time.mi : null;
 
-      await addResult(name, date.y, date.m, date.d, h, mi, selectedSingleGroupIds);
+      // 同名・同生年月日の人が既にいたら確認する(二重登録の防止)
+      const birthDateStr = `${date.y}/${String(date.m).padStart(2,"0")}/${String(date.d).padStart(2,"0")}`;
+      const dup = findDuplicate(String(name).replace(/[\s　]/g, ""), birthDateStr);
+      if (dup && !confirm(`「${name}」さん（${birthDateStr}）はすでに登録されています。それでも別に登録しますか？\n（同じ人を複数グループに入れたい場合は、診断結果の✎編集からグループを追加する方が重複になりません）`)) return;
+
+      const ok = await addResult(name, date.y, date.m, date.d, h, mi, selectedSingleGroupIds);
+      if (!ok) return; // 保存失敗時はフォームを保持して再試行できるようにする
       document.getElementById("single-name").value = "";
       document.getElementById("single-date").value = "";
       document.getElementById("single-time").value = "";
@@ -2052,9 +2165,11 @@
     document.getElementById("bulk-submit").addEventListener("click", async () => {
       if (!selectedBulkGroupId) { showToast("登録先グループを選択してください"); return; }
       const validRows = lastParsedRows.filter(r => !r.error);
-      for (const r of validRows) {
-        await addResult(r.name, r.y, r.m, r.d, r.h, r.mi, selectedBulkGroupId, r.note, r.sei, r.mei);
-      }
+      const base = Date.now();
+      const entries = validRows.map((r, i) =>
+        makeResultEntry(r.name, r.y, r.m, r.d, r.h, r.mi, selectedBulkGroupId, r.note, r.sei, r.mei, base + i));
+      const ok = await addResultsBulk(entries);
+      if (!ok) return;
       document.getElementById("bulk-textarea").value = "";
       document.getElementById("bulk-preview").innerHTML = "";
       document.getElementById("bulk-submit").style.display = "none";
@@ -2082,12 +2197,14 @@
       const original = btn.textContent;
       btn.textContent = `登録中… (${valid.length}件)`;
       showToast(`${valid.length}件を登録中です。少しお待ちください…`);
+      let ok = false;
       try {
-        await confirmGroupBulkImport(lastGroupBulkRows);
+        ok = await confirmGroupBulkImport(lastGroupBulkRows);
       } finally {
         btn.disabled = false;
         btn.textContent = original;
       }
+      if (!ok) return; // 保存失敗時はフォームを保持
       document.getElementById("gbulk-textarea").value = "";
       document.getElementById("gbulk-preview").innerHTML = "";
       btn.style.display = "none";
@@ -2100,6 +2217,7 @@
 
     // CSV出力・全削除
     document.getElementById("export-csv-btn").addEventListener("click", exportCsv);
+    document.getElementById("recalc-btn").addEventListener("click", recalcAllResults);
     document.getElementById("clear-all-btn").addEventListener("click", async () => {
       if (results.length === 0) return;
       if (confirm("すべての診断結果を削除します。よろしいですか？")) {

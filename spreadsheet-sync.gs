@@ -61,23 +61,36 @@ function doPost(e) {
     const prevManaged = JSON.parse(props.getProperty("managedSheets") || "[]");
     const currentNames = sheetsData.map(function (s) { return s.name; });
 
-    // アプリから届いた各シートを書き込む
-    sheetsData.forEach(function (info) { writeSheet(ss, info); });
+    // アプリから届いた各シートを書き込む。
+    // ただし「このスクリプトが作ったのではない、中身のある手作りシート」は
+    // 上書きしない(ユーザーがメモ等に使っているシートを勝手に消さないため)。
+    var skipped = [];
+    sheetsData.forEach(function (info) {
+      var existing = ss.getSheetByName(info.name);
+      if (existing && prevManaged.indexOf(info.name) === -1 && !isSheetEmpty(existing)) {
+        skipped.push(info.name);
+        return; // 手作りの使用中シートには触れない
+      }
+      writeSheet(ss, info);
+    });
+
+    // 実際に書き込めたシート名だけを管理対象として記録する
+    var writtenNames = currentNames.filter(function (n) { return skipped.indexOf(n) === -1; });
 
     // 以前このスクリプトが作成し、今回送られてこなかったシート
     // (=アプリ側で削除されたグループ)を削除する。
     // uidが無い(古いバージョンのアプリからの)送信では、安全のため削除しない。
     if (data.uid) {
       prevManaged.forEach(function (name) {
-        if (currentNames.indexOf(name) === -1) {
+        if (writtenNames.indexOf(name) === -1) {
           const sheet = ss.getSheetByName(name);
           if (sheet && ss.getSheets().length > 1) ss.deleteSheet(sheet);
         }
       });
     }
-    props.setProperty("managedSheets", JSON.stringify(currentNames));
+    props.setProperty("managedSheets", JSON.stringify(writtenNames));
 
-    return jsonOut({ ok: true, sheets: currentNames.length });
+    return jsonOut({ ok: true, sheets: writtenNames.length, skipped: skipped });
   } catch (err) {
     return jsonOut({ ok: false, error: String(err) });
   } finally {
@@ -106,6 +119,18 @@ function writeSheet(ss, info) {
   }
   if (info.frozenRows) sheet.setFrozenRows(info.frozenRows);
   try { sheet.setTabColor(info.tabColor || null); } catch (err) {}
+}
+
+// シートが空か(データ範囲に中身が無いか)を判定する
+function isSheetEmpty(sheet) {
+  if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) return true;
+  var values = sheet.getDataRange().getValues();
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < values[r].length; c++) {
+      if (String(values[r][c]).trim() !== "") return false;
+    }
+  }
+  return true;
 }
 
 // 二次元配列を numRows x numCols にそろえる(足りない分は fill で補い、はみ出しは切る)

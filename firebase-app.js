@@ -20,7 +20,8 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
-  query
+  query,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -108,6 +109,9 @@ onAuthStateChanged(auth, (user) => {
     if (resultsUnsub) { resultsUnsub(); resultsUnsub = null; }
     if (groupsUnsub) { groupsUnsub(); groupsUnsub = null; }
     if (settingsUnsub) { settingsUnsub(); settingsUnsub = null; }
+    // ログアウト時はアプリ側のメモリキャッシュを白紙に戻す。
+    // (別アカウントで入り直したときに前の人のデータが残らないように)
+    window.dispatchEvent(new CustomEvent("metaq:signed-out"));
   }
 });
 
@@ -255,6 +259,25 @@ async function deleteGroup(id) {
   await deleteDoc(doc(groupsCollection(currentUser.uid), id));
 }
 
+// 複数の診断結果をまとめて保存する(一括登録の高速化用)。
+// Firestoreのバッチは1回500件までなので分割して送る。
+async function saveResultsBatch(entries) {
+  if (!currentUser || !entries || entries.length === 0) return [];
+  const col = resultsCollection(currentUser.uid);
+  const ids = [];
+  for (let i = 0; i < entries.length; i += 450) {
+    const batch = writeBatch(db);
+    entries.slice(i, i + 450).forEach((entry) => {
+      const id = entry.id || ("r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
+      const payload = { ...entry, id, _createdAt: entry._createdAt || Date.now() };
+      batch.set(doc(col, id), payload);
+      ids.push(id);
+    });
+    await batch.commit();
+  }
+  return ids;
+}
+
 // アプリ設定(スプレッドシート連携URLなど)を部分更新で保存する
 async function saveSettings(partial) {
   if (!currentUser) return;
@@ -264,6 +287,7 @@ async function saveSettings(partial) {
 // app.js からアクセスできるようグローバルに公開
 window.metaqFirestore = {
   saveResult,
+  saveResultsBatch,
   deleteResult,
   saveGroup,
   deleteGroup,
