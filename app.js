@@ -541,6 +541,24 @@
     return results.find(r => normalizePersonName(r) === nameNorm && r.birthDate === birthDate) || null;
   }
 
+  // 診断結果の検索用テキスト(名前・備考・グループ名・生年月日・診断内容をまとめる)
+  function resultSearchText(r) {
+    const c = r.calc || {};
+    const gnames = resultGroupIds(r).map(id => { const g = getGroupById(id); return g ? g.name : ""; });
+    const parts = [
+      r.sei, r.mei, r.name, r.note, r.birthDate, r.birthTime,
+      ...gnames,
+      c.bunrui60 != null ? "no." + c.bunrui60 : "", c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
+      c.rail && c.rail.rail, c.rail && c.rail.tsuhensei,
+      c.fukuNoKami && ("福の神" + c.fukuNoKami.label),
+      c.honshitsu && c.honshitsu.animal, c.honshitsu && GROUP_LABEL[c.honshitsu.group],
+      c.hyomen && c.hyomen.animal, c.hyomen && GROUP_LABEL[c.hyomen.group],
+      c.ishi && c.ishi.animal, c.ishi && GROUP_LABEL[c.ishi.group],
+      c.jichu && c.jichu.animal
+    ];
+    return parts.filter(Boolean).join(" ").toLowerCase();
+  }
+
   // Firebase側からのリアルタイム更新を受け取り、メモリ上のキャッシュを更新して再描画する
   window.addEventListener("metaq:results-updated", (e) => {
     results = e.detail.results || [];
@@ -908,9 +926,11 @@
     renderResultsGroupFilterOptions();
 
     const filterVal = document.getElementById("results-group-filter").value || "all";
+    const term = (document.getElementById("results-search")?.value || "").trim().toLowerCase();
     let filtered = results;
     if (filterVal === "none") filtered = results.filter(r => resultGroupIds(r).length === 0);
     else if (filterVal !== "all") filtered = results.filter(r => resultGroupIds(r).includes(filterVal));
+    if (term) filtered = filtered.filter(r => resultSearchText(r).includes(term));
 
     if (results.length === 0) {
       actions.style.display = "none";
@@ -924,7 +944,7 @@
     if (filtered.length === 0) {
       list.innerHTML = `<div class="empty-state">
         <div class="emoji">🔍</div>
-        <p>このグループには診断結果がありません。</p>
+        <p>${term ? "該当する人が見つかりません。" : "このグループには診断結果がありません。"}</p>
       </div>`;
       return;
     }
@@ -1992,45 +2012,64 @@
     return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
   }
 
+  // 図書館のカード(診断結果と同じコンパクトな見た目)。cが無い(生年月日不確か)人は診断を省く。
   function libraryCardHtml(name, dateStr, desc, c) {
+    const pill = (label, p) => p
+      ? `<span class="rc-pill ${p.group}"><span class="lbl">${label}</span>${escapeHtml(p.animal)}</span>` : "";
     const diag = c ? `
-      <div class="classify-strip">
-        <div class="row-top">
-          <span class="num">No.${String(c.bunrui60).padStart(2, "0")}</span>
-          <span class="gz">${c.bunrui60_gz}　${c.bunrui60_kanGroup}</span>
-        </div>
-        <div class="chara-name">${escapeHtml(c.bunrui60_charaName)}</div>
-        <div class="fuku-badge">福の神No. <span class="fuku-num">${c.fukuNoKami.label}</span></div>
-        <div class="rail-badge">レール <span class="rail-num">${escapeHtml(c.rail.rail)}</span><span class="rail-sub">（${escapeHtml(c.rail.tsuhensei)}）</span></div>
+      <div class="rc-info">
+        <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
+        <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
+        <span class="rc-chara">${escapeHtml(c.bunrui60_charaName)}</span>
       </div>
-      <div class="pillars">
-        ${pillarBoxHtml("本質", c.honshitsu)}
-        ${pillarBoxHtml("表面", c.hyomen)}
-        ${pillarBoxHtml("意思", c.ishi)}
+      <div class="rc-badges">
+        <span class="rc-rail">レール ${escapeHtml(c.rail.rail)}</span>
+        <span class="rc-fuku">福の神 ${c.fukuNoKami.label}</span>
+      </div>
+      <div class="rc-pillars">
+        ${pill("本質", c.honshitsu)}${pill("表面", c.hyomen)}${pill("意思", c.ishi)}
       </div>`
-      : `<div class="hint" style="padding:2px 18px 14px;">※生年月日が確定していないため、診断は省略しています。</div>`;
+      : `<div class="hint" style="padding:0 14px 12px;">※生年月日が確定していないため、診断は省略しています。</div>`;
     return `
-    <div class="result-card">
-      <div class="result-head">
-        <div>
-          <div class="name">${escapeHtml(name)}</div>
-          <div class="birth">${escapeHtml(dateStr || "生没年不詳")}</div>
+    <div class="result-card compact">
+      <div class="rc-head">
+        <div class="rc-name-wrap">
+          <span class="rc-name">${escapeHtml(name)}</span>
+          <span class="rc-birth">${escapeHtml(dateStr || "生没年不詳")}</span>
         </div>
       </div>
-      <div class="lib-desc">${escapeHtml(desc || "")}</div>
+      ${desc ? `<div class="lib-desc">${escapeHtml(desc)}</div>` : ""}
       ${diag}
     </div>`;
+  }
+
+  let libraryGenreFilter = "all"; // 図書館のジャンル絞り込み
+
+  // ジャンル絞り込みチップ(すべて/各ジャンル)を描く
+  function renderLibraryGenreChips() {
+    const box = document.getElementById("library-genre-chips");
+    if (!box) return;
+    const genres = [...new Set(LIBRARY_PEOPLE.map(p => p.genre))];
+    const chip = (val, label) =>
+      `<div class="chip ${libraryGenreFilter === val ? "selected" : ""}" data-genre="${escapeHtml(val)}">${escapeHtml(label)}</div>`;
+    box.innerHTML = chip("all", "すべて") + genres.map(g => chip(g, g)).join("");
+    box.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+      libraryGenreFilter = c.dataset.genre;
+      renderLibrary();
+    }));
   }
 
   function renderLibrary() {
     const container = document.getElementById("library-content");
     if (!container) return;
+    renderLibraryGenreChips();
     const term = (document.getElementById("library-search")?.value || "").trim().toLowerCase();
-    const matched = LIBRARY_PEOPLE.filter(p =>
-      !term || p.name.toLowerCase().includes(term) || (p.desc || "").toLowerCase().includes(term));
+    let matched = LIBRARY_PEOPLE.filter(p => libraryGenreFilter === "all" || p.genre === libraryGenreFilter);
+    if (term) matched = matched.filter(p =>
+      p.name.toLowerCase().includes(term) || (p.desc || "").toLowerCase().includes(term));
 
     let html = `<div class="hint" style="margin-bottom:14px;">
-      ${matched.length}名を表示中${term ? `（「${escapeHtml(term)}」で検索）` : "（有名人・スポーツ選手・偉人／生年月日は公開情報に基づきます）"}
+      ${matched.length}名を表示中${libraryGenreFilter !== "all" ? `（${escapeHtml(libraryGenreFilter)}）` : ""}${term ? `（「${escapeHtml(term)}」で検索）` : ""}
     </div>`;
     if (matched.length === 0) {
       container.innerHTML = html + `<div class="empty-state"><div class="emoji">🔍</div><p>該当する人物が見つかりません。</p></div>`;
@@ -2214,6 +2253,7 @@
 
     // 診断結果 - グループフィルター
     document.getElementById("results-group-filter").addEventListener("change", renderResults);
+    document.getElementById("results-search").addEventListener("input", renderResults);
 
     // CSV出力・全削除
     document.getElementById("export-csv-btn").addEventListener("click", exportCsv);
