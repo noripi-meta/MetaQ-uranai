@@ -351,6 +351,33 @@
   .rc-pill.moon{ background:var(--moon); }
   .rc-pill.sun{ background:var(--sun); }
   .rc-pill.empty{ background:#f3eef7; color:#c3b8cc; }
+
+  /* 折りたたみ詳細(空亡・エネルギー・能力・リズム) */
+  .rc-detail{ border-top:1px solid #f0e6f7; }
+  .rc-detail > summary{
+    list-style:none; cursor:pointer;
+    padding:9px 14px; font-size:11.5px; font-weight:800;
+    color:var(--lavender-deep); user-select:none;
+  }
+  .rc-detail > summary::-webkit-details-marker{ display:none; }
+  .rc-detail > summary::before{ content:"▸ "; }
+  .rc-detail[open] > summary::before{ content:"▾ "; }
+  .rc-detail-body{ padding:2px 14px 14px; }
+  .det-sec{ margin-bottom:12px; }
+  .det-h{ font-size:12px; font-weight:800; color:var(--ink); margin-bottom:5px; }
+  .det-row{ font-size:12px; color:var(--ink-soft); line-height:1.7; }
+  .det-row b{ color:var(--ink); }
+  .det-sub{ font-size:10.5px; color:var(--ink-soft); font-weight:600; }
+  .det-big{ font-size:16px; color:var(--pink-deep); }
+  .det-bar-row{ display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .det-bar-label{ width:92px; flex-shrink:0; font-size:11px; font-weight:700; color:var(--ink); }
+  .det-bar-label small{ display:block; font-size:9px; font-weight:600; color:var(--ink-soft); }
+  .det-bar-track{ flex:1; height:9px; background:#f0e6f7; border-radius:999px; overflow:hidden; }
+  .det-bar-fill{ display:block; height:100%; background:linear-gradient(90deg,var(--lavender),var(--pink)); border-radius:999px; }
+  .det-bar-val{ width:18px; text-align:right; font-size:11px; font-weight:800; color:var(--ink); }
+  .det-chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .det-chip{ font-size:11px; font-weight:700; color:var(--ink-soft); background:#f4ecfb; border-radius:999px; padding:4px 11px; }
+  .det-chip b{ color:var(--pink-deep); margin-left:2px; }
   .rc-groupline{ display:flex; flex-wrap:wrap; gap:6px; padding:0 14px 8px; }
   .rc-groupline .rc-group{
     background:#f4ecfb; border-radius:999px; padding:3px 9px;

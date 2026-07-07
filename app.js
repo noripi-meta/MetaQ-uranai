@@ -349,6 +349,87 @@
     return { n1, n2, n3, label: `${n1}${n2}${n3}` };
   }
 
+  // ---------- 空亡（旬空亡） ----------
+  // 日干支番号X(1〜60)から旬グループ(0〜5)を出し、空亡になる地支と月を決める。
+  const KOBAKU = [
+    { junName: "甲子旬", branches: ["戌", "亥"], months: [10, 11] },
+    { junName: "甲戌旬", branches: ["申", "酉"], months: [8, 9] },
+    { junName: "甲申旬", branches: ["午", "未"], months: [6, 7] },
+    { junName: "甲午旬", branches: ["辰", "巳"], months: [4, 5] },
+    { junName: "甲辰旬", branches: ["寅", "卯"], months: [2, 3] },
+    { junName: "甲寅旬", branches: ["子", "丑"], months: [12, 1] },
+  ];
+  function calcKobaku(bunrui60No) {
+    const group = Math.floor((bunrui60No - 1) / 10); // 0〜5
+    const k = KOBAKU[group];
+    return { group, junName: k.junName, branches: k.branches.slice(), months: k.months.slice() };
+  }
+  // 空亡の地支に当たる西暦年を、基準年から先に向かって探す(年空亡の表示用)
+  function nextKobakuYears(branches, fromYear, count) {
+    const idxs = branches.map(b => JUNISHI.indexOf(b));
+    const years = [];
+    for (let y = fromYear; years.length < (count || branches.length) && y < fromYear + 24; y++) {
+      const bi = ((y - 4) % 12 + 12) % 12; // その年の地支
+      if (idxs.includes(bi)) years.push(y);
+    }
+    return years;
+  }
+
+  // ---------- エネルギー（十二運の点数合計） ----------
+  const ENERGY_POINTS = {
+    "長生": 9, "沐浴": 8, "冠帯": 10, "建禄": 11, "帝旺": 12, "衰": 7,
+    "病": 4, "死": 2, "墓": 5, "絶": 1, "胎": 3, "養": 6
+  };
+  function calcEnergy(honshitsuJ, hyomenJ, ishiJ) {
+    const p = (j) => ENERGY_POINTS[j] || 0;
+    const a = p(honshitsuJ), b = p(hyomenJ), c = p(ishiJ);
+    return { total: a + b + c, honshitsu: a, hyomen: b, ishi: c };
+  }
+
+  // ---------- 能力（通変星のレーダー） ----------
+  // 各地支に含まれる蔵干(すべて)。命式内の通変星をもれなく数えるために使う。
+  const ZOUKAN_ALL = {
+    "子": ["癸"], "丑": ["己", "癸", "辛"], "寅": ["甲", "丙", "戊"], "卯": ["乙"],
+    "辰": ["戊", "乙", "癸"], "巳": ["丙", "庚", "戊"], "午": ["丁", "己"], "未": ["己", "丁", "乙"],
+    "申": ["庚", "壬", "戊"], "酉": ["辛"], "戌": ["戊", "辛", "丁"], "亥": ["壬", "甲"]
+  };
+  // 5つの能力軸(自立・表現・人脈・行動・知性)と、対応する通変星2つ
+  const ABILITY_AXES = [
+    { key: "jiritsu", label: "自立", sub: "計画力・独立心", stars: ["比肩", "劫財"] },
+    { key: "hyogen", label: "表現", sub: "想像力・発信力", stars: ["食神", "傷官"] },
+    { key: "jinmyaku", label: "人脈", sub: "交渉力・実行力", stars: ["偏財", "正財"] },
+    { key: "kodo", label: "行動", sub: "統率力・分析力", stars: ["偏官", "正官"] },
+    { key: "chisei", label: "知性", sub: "継続力・指導力", stars: ["偏印", "印綬"] },
+  ];
+  // 命式の天干(年月日時)と全地支の蔵干から通変星を数え、5軸に集計する
+  function calcAbility(dayStem, stems) {
+    const counts = {};
+    stems.forEach(s => { const t = tsuhenseiFor(dayStem, s); if (t) counts[t] = (counts[t] || 0) + 1; });
+    const axes = ABILITY_AXES.map(ax => ({
+      key: ax.key, label: ax.label, sub: ax.sub,
+      value: (counts[ax.stars[0]] || 0) + (counts[ax.stars[1]] || 0)
+    }));
+    const max = Math.max(1, ...axes.map(a => a.value));
+    return { axes, max, counts };
+  }
+
+  // ---------- リズム（バイオリズム） ----------
+  const RHYTHM_NAME = {
+    "比肩": "整理", "劫財": "投資", "食神": "成果", "傷官": "転換", "偏財": "完結",
+    "正財": "調整", "偏官": "焦燥", "正官": "活動", "偏印": "浪費", "印綬": "開墾"
+  };
+  // ある対象日(ty/tm/td)の年干・月干・日干を求め、本人の日干から見た通変星でリズムを返す
+  function calcRhythm(dayStem, ty, tm, td) {
+    const jd = toJulianDay(ty, tm, td, 12);
+    const mbIdx = monthBranchIndex(sunLongitude(jd));
+    const { idx: yi } = yearGanzhiIndex(ty, tm, td);
+    const yearStem = JIKKAN[(yi % 10 + 10) % 10];
+    const monthStem = JIKKAN[monthStemIndex(yi % 10, mbIdx)];
+    const dayStemT = JIKKAN[dayIndex(ty, tm, td) % 10];
+    const rhythmOf = (targetStem) => RHYTHM_NAME[tsuhenseiFor(dayStem, targetStem)] || "?";
+    return { year: rhythmOf(yearStem), month: rhythmOf(monthStem), day: rhythmOf(dayStemT) };
+  }
+
   // ---------- 統合計算 ----------
   function calcFourPillars(y, m, d, h, mi) {
     h = (h === undefined || h === null || isNaN(h)) ? null : h;
@@ -378,10 +459,13 @@
     const ishi        = juniunFor(dayStem, yearBranchIdx); // 意思＝年柱
 
     let jichu = null; // 時柱
+    let hourStem = null, hourBranch = null;
     if (h !== null) {
       const hbIdx = hourBranchIndex(h, mi);
       const hsIdx = hourStemIndex(JIKKAN.indexOf(dayStem), hbIdx);
-      const hourGz = JIKKAN[hsIdx] + JUNISHI[hbIdx];
+      hourStem = JIKKAN[hsIdx];
+      hourBranch = JUNISHI[hbIdx];
+      const hourGz = hourStem + hourBranch;
       const hourJuniun = juniunFor(dayStem, hbIdx);
       jichu = { gz: hourGz, juniun: hourJuniun, ...JUNIUN_TO_ANIMAL[hourJuniun] };
     }
@@ -391,6 +475,17 @@
     const fukuNoKami = calcFukuNoKami(y, m, d);
     const rail = calcRail(dayStem, JUNISHI[mbIdx], y, m, d);
 
+    // 空亡・エネルギー・能力(生年月日だけで決まる部分。年空亡とリズムは表示時に計算)
+    const kobaku = calcKobaku(bunrui60No);
+    const energy = calcEnergy(honshitsu, hyomen, ishi);
+    // 能力: 命式の天干(年月日時)＋全地支の蔵干から通変星を数える
+    const abilityStems = [dayStem, JIKKAN[yearStemIdx], JIKKAN[msIdx]];
+    if (hourStem) abilityStems.push(hourStem);
+    const branchesForZoukan = [dayBranch, JUNISHI[yearBranchIdx], JUNISHI[mbIdx]];
+    if (hourBranch) branchesForZoukan.push(hourBranch);
+    branchesForZoukan.forEach(b => (ZOUKAN_ALL[b] || []).forEach(s => abilityStems.push(s)));
+    const ability = calcAbility(dayStem, abilityStems);
+
     return {
       bunrui60: bunrui60No,            // 1〜60
       bunrui60_gz: dayGz,
@@ -399,10 +494,14 @@
       fukuNoKami,
       rail,
       dayGz, monthGz, yearGz,
+      dayStem,                          // リズム計算(表示時)に使う本人の日干
       honshitsu: { juniun: honshitsu, ...JUNIUN_TO_ANIMAL[honshitsu] },
       hyomen:    { juniun: hyomen,    ...JUNIUN_TO_ANIMAL[hyomen] },
       ishi:       { juniun: ishi,       ...JUNIUN_TO_ANIMAL[ishi] },
       jichu,
+      kobaku,
+      energy,
+      ability,
       effYear
     };
   }
@@ -784,6 +883,54 @@
     </div>`;
   }
 
+  // 折りたたみ式の詳細(空亡・エネルギー・能力・リズム)。calc(c)から組み立てる。
+  // 年空亡とリズムは「今日」に依存するため、保存せず表示のたびに計算する。
+  function resultDetailHtml(c) {
+    if (!c) return "";
+    const now = new Date();
+    let body = "";
+    if (c.kobaku) {
+      const kb = c.kobaku;
+      const years = nextKobakuYears(kb.branches, now.getFullYear(), 2);
+      body += `<div class="det-sec">
+        <div class="det-h">🕳️ 空亡（${escapeHtml(kb.junName)}）</div>
+        <div class="det-row">空亡の十二支：<b>${kb.branches.join("・")}</b></div>
+        <div class="det-row">月空亡（毎年）：<b>${kb.months.map(m => m + "月").join("・")}</b></div>
+        <div class="det-row">年空亡（次回）：<b>${years.join("・")}年</b></div>
+      </div>`;
+    }
+    if (c.energy) {
+      body += `<div class="det-sec">
+        <div class="det-h">⚡ エネルギー</div>
+        <div class="det-row">合計 <b class="det-big">${c.energy.total}</b> 点<span class="det-sub">（本質${c.energy.honshitsu}＋表面${c.energy.hyomen}＋意思${c.energy.ishi}）</span></div>
+      </div>`;
+    }
+    if (c.ability) {
+      const bars = c.ability.axes.map(a => {
+        const pct = Math.round((a.value / c.ability.max) * 100);
+        return `<div class="det-bar-row">
+          <span class="det-bar-label">${a.label}<small>${a.sub}</small></span>
+          <span class="det-bar-track"><span class="det-bar-fill" style="width:${pct}%"></span></span>
+          <span class="det-bar-val">${a.value}</span>
+        </div>`;
+      }).join("");
+      body += `<div class="det-sec"><div class="det-h">📊 能力</div>${bars}</div>`;
+    }
+    if (c.dayStem) {
+      const r = calcRhythm(c.dayStem, now.getFullYear(), now.getMonth() + 1, now.getDate());
+      body += `<div class="det-sec">
+        <div class="det-h">🎵 リズム<span class="det-sub">（${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}時点）</span></div>
+        <div class="det-chips">
+          <span class="det-chip">年 <b>${escapeHtml(r.year)}</b></span>
+          <span class="det-chip">月 <b>${escapeHtml(r.month)}</b></span>
+          <span class="det-chip">日 <b>${escapeHtml(r.day)}</b></span>
+        </div>
+      </div>`;
+    }
+    if (!body) return "";
+    return `<details class="rc-detail"><summary>詳細（空亡・エネルギー・能力・リズム）</summary><div class="rc-detail-body">${body}</div></details>`;
+  }
+
   let editingResultId = null; // 個別編集中の結果ID
 
   // 個別の診断結果の 名前・生年月日・時刻・備考 を編集して保存する。
@@ -897,6 +1044,7 @@
         ${pill("意思", c.ishi)}
         ${pill("時柱", c.jichu)}
       </div>
+      ${resultDetailHtml(c)}
     </div>`;
   }
 
@@ -2028,7 +2176,8 @@
       </div>
       <div class="rc-pillars">
         ${pill("本質", c.honshitsu)}${pill("表面", c.hyomen)}${pill("意思", c.ishi)}
-      </div>`
+      </div>
+      ${resultDetailHtml(c)}`
       : `<div class="hint" style="padding:0 14px 12px;">※生年月日が確定していないため、診断は省略しています。</div>`;
     return `
     <div class="result-card compact">
