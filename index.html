@@ -264,7 +264,7 @@
     flex-direction:column;
     gap:10px;
   }
-  .edit-form input{
+  .edit-form input, .edit-form select{
     width:100%;
     box-sizing:border-box;
     padding:9px 11px;
@@ -306,6 +306,66 @@
     line-height:1.6;
     color:var(--ink-soft);
   }
+
+  /* コンパクトな一覧カード */
+  .result-card.compact{ padding:0; }
+  .rc-head{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:11px 14px 7px;
+  }
+  .rc-name-wrap{ display:flex; flex-direction:column; min-width:0; flex:1; }
+  .rc-name{
+    font-size:14px; font-weight:800; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .rc-birth{ font-size:10.5px; color:var(--ink-soft); margin-top:1px; }
+  .rc-group{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:10.5px; font-weight:700; color:var(--ink-soft);
+    white-space:nowrap; flex-shrink:0;
+  }
+  .rc-group .swatch{ width:8px; height:8px; border-radius:50%; }
+  .rc-info{
+    display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
+    padding:0 14px 5px;
+  }
+  .rc-no{ font-weight:800; font-size:13px; color:var(--pink-deep); }
+  .rc-gz{ font-size:11px; color:var(--ink-soft); }
+  .rc-chara{ font-size:13px; font-weight:800; color:var(--ink); }
+  .rc-badges{ display:flex; gap:6px; flex-wrap:wrap; padding:0 14px 8px; }
+  .rc-badges span{
+    font-size:10.5px; font-weight:700; color:var(--ink-soft);
+    background:#f4ecfb; border-radius:999px; padding:3px 10px;
+  }
+  .rc-badges .rc-rail{ background:linear-gradient(135deg,var(--mint),var(--sky)); color:#2a6e8f; }
+  .rc-pillars{ display:flex; gap:5px; flex-wrap:wrap; padding:0 14px 12px; }
+  .rc-pill{
+    display:flex; align-items:center; gap:4px;
+    font-size:11px; font-weight:800; color:var(--ink);
+    border-radius:9px; padding:4px 9px;
+  }
+  .rc-pill .lbl{ opacity:0.5; font-size:9.5px; font-weight:700; }
+  .rc-pill.earth{ background:var(--earth); }
+  .rc-pill.moon{ background:var(--moon); }
+  .rc-pill.sun{ background:var(--sun); }
+  .rc-pill.empty{ background:#f3eef7; color:#c3b8cc; }
+  .rc-groupline{ display:flex; flex-wrap:wrap; gap:6px; padding:0 14px 8px; }
+  .rc-groupline .rc-group{
+    background:#f4ecfb; border-radius:999px; padding:3px 9px;
+  }
+
+  /* 編集フォームのグループ複数選択 */
+  .grp-checks{ display:flex; flex-wrap:wrap; gap:8px; }
+  .grp-check{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:12.5px; font-weight:700; color:var(--ink);
+    background:#fff; border:1.5px solid #e6d3ef; border-radius:999px;
+    padding:6px 12px; cursor:pointer;
+  }
+  .grp-check input{ width:auto; margin:0; accent-color:var(--lavender-deep); }
+  .grp-check .swatch{ width:10px; height:10px; border-radius:50%; }
 
   .classify-strip{
     display:flex;
@@ -871,7 +931,7 @@
   </header>
 
   <div class="tabbar">
-    <button class="tab-btn active" data-tab="single">1人ずつ診断</button>
+    <button class="tab-btn active" data-tab="single">新規登録</button>
     <button class="tab-btn" data-tab="bulk">まとめて登録</button>
     <button class="tab-btn" data-tab="results">診断結果</button>
     <button class="tab-btn" data-tab="groups">グループ管理</button>
@@ -896,7 +956,7 @@
         <input type="text" id="single-time" placeholder="例：14:30" inputmode="numeric">
       </div>
       <div class="field">
-        <label>グループ（必須）</label>
+        <label>グループ（必須・複数選択できます）</label>
         <div class="group-select-chip" id="single-group-chips"></div>
       </div>
       <button class="btn-primary" id="single-submit">診断する</button>
@@ -1013,6 +1073,11 @@
     <div class="card" style="padding:14px;">
       <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前や「何をした人か」で検索（例：物理、画家、ノーベル）">
     </div>
+    <div class="card agg-group-select">
+      <h2>📊 ジャンル別に集計</h2>
+      <select id="library-agg-genre"></select>
+    </div>
+    <div id="library-agg"></div>
     <div id="library-content"></div>
   </div>
 

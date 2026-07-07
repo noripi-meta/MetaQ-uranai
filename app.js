@@ -494,10 +494,11 @@
     if (!fs) return;
     try {
       await fs.deleteGroup(groupId);
-      // このグループに属していた人は「未分類」扱いにする(groupIdをnullへ)
-      const affected = results.filter(r => r.groupId === groupId);
+      // このグループに属していた人は、そのグループだけ外す(他のグループには残す)
+      const affected = results.filter(r => resultGroupIds(r).includes(groupId));
       for (const r of affected) {
-        const updated = { ...r, groupId: null };
+        const updated = { ...r, groupIds: resultGroupIds(r).filter(id => id !== groupId) };
+        delete updated.groupId;
         await fs.saveResult(updated);
       }
       scheduleSheetSync();
@@ -509,6 +510,13 @@
 
   function getGroupById(id) {
     return groups.find(g => g.id === id) || null;
+  }
+
+  // 1人が複数グループに所属できる。データは groupIds(配列)で持つが、
+  // 旧データ(groupId 単一)も読めるように正規化して返す。
+  function resultGroupIds(r) {
+    if (Array.isArray(r.groupIds)) return r.groupIds;
+    return r.groupId ? [r.groupId] : [];
   }
 
   // Firebase側からのリアルタイム更新を受け取り、メモリ上のキャッシュを更新して再描画する
@@ -599,8 +607,9 @@
     return `${String(parsed.h).padStart(2,"0")}:${String(parsed.mi).padStart(2,"0")}`;
   }
 
-  async function addResult(name, y, m, d, h, mi, groupId, note, sei, mei) {
+  async function addResult(name, y, m, d, h, mi, groupIds, note, sei, mei) {
     const calc = calcFourPillars(y, m, d, h, mi);
+    const gids = Array.isArray(groupIds) ? groupIds.filter(Boolean) : (groupIds ? [groupIds] : []);
     const entry = {
       id: "r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       name: name || "（名前未入力）",
@@ -609,7 +618,7 @@
       note: note || "",
       birthDate: `${y}/${String(m).padStart(2,"0")}/${String(d).padStart(2,"0")}`,
       birthTime: (h !== null && h !== undefined) ? `${String(h).padStart(2,"0")}:${String(mi||0).padStart(2,"0")}` : "",
-      groupId: groupId || null,
+      groupIds: gids,
       calc
     };
     const fs = getFS();
@@ -633,10 +642,11 @@
     scheduleSheetSync();
   }
 
-  async function setResultGroup(id, groupId) {
+  async function setResultGroups(id, groupIds) {
     const r = results.find(r => r.id === id);
     if (!r) return;
-    const updated = { ...r, groupId: groupId || null };
+    const updated = { ...r, groupIds: (groupIds || []).filter(Boolean) };
+    delete updated.groupId;
     const fs = getFS();
     if (fs) {
       try { await fs.saveResult(updated); } catch (e) { console.error(e); showToast("更新に失敗しました"); return; }
@@ -669,7 +679,7 @@
 
   // 個別の診断結果の 名前・生年月日・時刻・備考 を編集して保存する。
   // 生年月日/時刻が変わると命式を計算し直す。
-  async function editResult(id, name, dateStr, timeStr, note) {
+  async function editResult(id, name, dateStr, timeStr, note, groupIds) {
     const r = results.find(x => x.id === id);
     if (!r) return false;
     const date = parseFlexibleDate(dateStr);
@@ -686,10 +696,12 @@
       name: name || "（名前未入力）",
       sei: "", mei: "",
       note: note || "",
+      groupIds: (groupIds || []).filter(Boolean),
       birthDate: `${date.y}/${pad(date.m)}/${pad(date.d)}`,
       birthTime: (h !== null && h !== undefined) ? `${pad(h)}:${pad(mi || 0)}` : "",
       calc: calcFourPillars(date.y, date.m, date.d, h, mi)
     };
+    delete updated.groupId;
     const fs = getFS();
     if (fs) {
       try { await fs.saveResult(updated); }
@@ -703,13 +715,17 @@
 
   function renderResultCard(entry) {
     const c = entry.calc;
-    const group = entry.groupId ? getGroupById(entry.groupId) : null;
+    const gids = resultGroupIds(entry);
 
     // 編集中はこのカードを編集フォームに差し替える
     if (entry.id === editingResultId) {
       const editName = (entry.sei || entry.mei)
         ? [entry.sei, entry.mei].filter(Boolean).join(" ")
         : (entry.name === "（名前未入力）" ? "" : entry.name);
+      const groupChecks = groups.map(g =>
+        `<label class="grp-check"><input type="checkbox" class="edit-group" value="${g.id}" ${gids.includes(g.id) ? "checked" : ""}>
+          <span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}</label>`
+      ).join("") || `<div class="hint">グループがありません。「グループ管理」で作成してください。</div>`;
       return `
       <div class="result-card">
         <div class="result-head"><div><div class="name">✎ 編集中</div></div></div>
@@ -718,6 +734,9 @@
           <div class="field"><label>生年月日</label><input type="text" class="edit-date" value="${escapeHtml(entry.birthDate || "")}" placeholder="1990/06/24"></div>
           <div class="field"><label>時刻（任意・空欄OK）</label><input type="text" class="edit-time" value="${escapeHtml(entry.birthTime || "")}" placeholder="14:30"></div>
           <div class="field"><label>備考（任意）</label><input type="text" class="edit-note" value="${escapeHtml(entry.note || "")}" placeholder="メモ"></div>
+          <div class="field"><label>グループ（複数選択できます）</label>
+            <div class="grp-checks">${groupChecks}</div>
+          </div>
           <div style="display:flex; gap:8px; margin-top:4px;">
             <button class="redit-save" data-id="${entry.id}">保存</button>
             <button class="redit-cancel">キャンセル</button>
@@ -725,13 +744,10 @@
         </div>
       </div>`;
     }
-    const groupBadge = group
-      ? `<div class="name-group-badge"><span class="swatch" style="background:${group.color}"></span>${escapeHtml(group.name)}</div>`
-      : `<div class="name-group-badge" style="color:#cfc3d6;">グループ未設定</div>`;
-
-    const groupOptions = groups.map(g =>
-      `<option value="${g.id}" ${entry.groupId === g.id ? "selected" : ""}>${escapeHtml(g.name)}</option>`
-    ).join("");
+    const gObjs = gids.map(id => getGroupById(id)).filter(Boolean);
+    const groupBadge = gObjs.length
+      ? gObjs.map(g => `<span class="rc-group"><span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}</span>`).join("")
+      : `<span class="rc-group" style="color:#cfc3d6;">未設定</span>`;
 
     // 性・名・備考があればその順で組み立てる。性/名が無ければ従来のnameを使う(後方互換)
     const displayNameParts = (entry.sei || entry.mei)
@@ -739,40 +755,38 @@
       : [entry.name, entry.note].filter(s => s);
     const displayName = displayNameParts.join("　");
 
+    // 小さな柱チップ(本質/表面/意思/時柱)。動物名だけをグループ色で。
+    const pill = (label, p) => p
+      ? `<span class="rc-pill ${p.group}"><span class="lbl">${label}</span>${escapeHtml(p.animal)}</span>`
+      : `<span class="rc-pill empty"><span class="lbl">${label}</span>—</span>`;
+
     return `
-    <div class="result-card">
-      <div class="result-head">
-        <div>
-          <div class="name">${escapeHtml(displayName)}</div>
-          <div class="birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</div>
-          ${groupBadge}
+    <div class="result-card compact">
+      <div class="rc-head">
+        <div class="rc-name-wrap">
+          <span class="rc-name">${escapeHtml(displayName)}</span>
+          <span class="rc-birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</span>
         </div>
         <div class="head-btns">
           <button class="redit-btn" data-id="${entry.id}" title="編集">✎</button>
           <button class="del-btn" data-id="${entry.id}" title="削除">×</button>
         </div>
       </div>
-      <div style="padding:0 18px 10px;">
-        <select class="group-reassign" data-id="${entry.id}" style="width:100%; padding:8px 10px; border-radius:10px; border:1.5px solid #f0e3f6; background:#fdfaff; font-size:12px; color:var(--ink);">
-          <option value="">グループ未設定にする</option>
-          ${groupOptions}
-        </select>
+      <div class="rc-groupline">${groupBadge}</div>
+      <div class="rc-info">
+        <span class="rc-no">No.${String(c.bunrui60).padStart(2,"0")}</span>
+        <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
+        <span class="rc-chara">${escapeHtml(c.bunrui60_charaName)}</span>
       </div>
-      <div class="classify-strip">
-        <div class="row-top">
-          <span class="num">No.${String(c.bunrui60).padStart(2,"0")}</span>
-          <span class="gz">${c.bunrui60_gz}　${c.bunrui60_kanGroup}</span>
-          ${groupChipHtml(c.honshitsu.group)}
-        </div>
-        <div class="chara-name">${escapeHtml(c.bunrui60_charaName)}</div>
-        <div class="fuku-badge">福の神No. <span class="fuku-num">${c.fukuNoKami.label}</span></div>
-        <div class="rail-badge">レール <span class="rail-num">${escapeHtml(c.rail.rail)}</span><span class="rail-sub">（${escapeHtml(c.rail.tsuhensei)}）</span></div>
+      <div class="rc-badges">
+        <span class="rc-rail">レール ${escapeHtml(c.rail.rail)}</span>
+        <span class="rc-fuku">福の神 ${c.fukuNoKami.label}</span>
       </div>
-      <div class="pillars">
-        ${pillarBoxHtml("本質", c.honshitsu)}
-        ${pillarBoxHtml("表面", c.hyomen)}
-        ${pillarBoxHtml("意思", c.ishi)}
-        ${pillarBoxHtml("時柱", c.jichu)}
+      <div class="rc-pillars">
+        ${pill("本質", c.honshitsu)}
+        ${pill("表面", c.hyomen)}
+        ${pill("意思", c.ishi)}
+        ${pill("時柱", c.jichu)}
       </div>
     </div>`;
   }
@@ -798,14 +812,14 @@
 
     const filterVal = document.getElementById("results-group-filter").value || "all";
     let filtered = results;
-    if (filterVal === "none") filtered = results.filter(r => !r.groupId);
-    else if (filterVal !== "all") filtered = results.filter(r => r.groupId === filterVal);
+    if (filterVal === "none") filtered = results.filter(r => resultGroupIds(r).length === 0);
+    else if (filterVal !== "all") filtered = results.filter(r => resultGroupIds(r).includes(filterVal));
 
     if (results.length === 0) {
       actions.style.display = "none";
       list.innerHTML = `<div class="empty-state">
         <div class="emoji">🌙</div>
-        <p>まだ診断結果がありません。<br>「1人ずつ診断」または「まとめて登録」から<br>生年月日を入力してください。</p>
+        <p>まだ診断結果がありません。<br>「新規登録」または「まとめて登録」から<br>生年月日を入力してください。</p>
       </div>`;
       return;
     }
@@ -820,9 +834,6 @@
     list.innerHTML = filtered.map(renderResultCard).join("");
     list.querySelectorAll(".del-btn").forEach(btn => {
       btn.addEventListener("click", () => deleteResult(btn.dataset.id));
-    });
-    list.querySelectorAll(".group-reassign").forEach(sel => {
-      sel.addEventListener("change", () => setResultGroup(sel.dataset.id, sel.value));
     });
     // 個別編集を開始
     list.querySelectorAll(".redit-btn").forEach(btn => {
@@ -840,9 +851,10 @@
         const dateStr = card.querySelector(".edit-date").value;
         const timeStr = card.querySelector(".edit-time").value;
         const note = card.querySelector(".edit-note").value.trim();
+        const groupIds = [...card.querySelectorAll(".edit-group:checked")].map(cb => cb.value);
         if (!parseFlexibleDate(dateStr)) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
         editingResultId = null;
-        const ok = await editResult(btn.dataset.id, name, dateStr, timeStr, note);
+        const ok = await editResult(btn.dataset.id, name, dateStr, timeStr, note, groupIds);
         if (ok) showToast("編集を保存しました");
       });
     });
@@ -1031,11 +1043,11 @@
 
   function resultToRow(r) {
     const c = r.calc;
-    const g = r.groupId ? getGroupById(r.groupId) : null;
+    const gnames = resultGroupIds(r).map(id => getGroupById(id)).filter(Boolean).map(g => g.name);
     const seiOut = r.sei || r.name || "";
     const meiOut = r.mei || "";
     return [
-      seiOut, meiOut, r.note || "", g ? g.name : "（未設定）", r.birthDate, r.birthTime,
+      seiOut, meiOut, r.note || "", gnames.length ? gnames.join("・") : "（未設定）", r.birthDate, r.birthTime,
       c.rail.rail, c.rail.tsuhensei,
       c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
       c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
@@ -1117,8 +1129,8 @@
   function resultRowColors(r, base) {
     const c = r.calc;
     const bg = Array(RESULT_HEADERS.length).fill(base);
-    const g = r.groupId ? getGroupById(r.groupId) : null;
-    if (g) bg[3] = g.color;                                   // グループ名
+    const g = getGroupById(resultGroupIds(r)[0]);
+    if (g) bg[3] = g.color;                                   // グループ名(複数時は先頭の色)
     const railColor = RAIL_COLOR[c.rail.rail];
     if (railColor) { bg[6] = railColor; bg[7] = railColor; }  // レール
     bg[16] = bg[17] = PIE_COLORS[c.honshitsu.group];          // 本質
@@ -1168,11 +1180,12 @@
       };
     }
 
-    // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える
+    // resultsは新しい順なので、シートでは登録順(古い順)に並べ替える。
+    // 複数グループに属する人は、所属する各グループのシートに登場する。
     const sheets = groups.map(g =>
-      makeSheet(g.name, g.color, results.filter(r => r.groupId === g.id).slice().reverse())
+      makeSheet(g.name, g.color, results.filter(r => resultGroupIds(r).includes(g.id)).slice().reverse())
     );
-    const ungrouped = results.filter(r => !r.groupId).slice().reverse();
+    const ungrouped = results.filter(r => resultGroupIds(r).length === 0).slice().reverse();
     if (ungrouped.length > 0) {
       sheets.push(makeSheet("グループ未設定", "#cccccc", ungrouped));
     }
@@ -1227,32 +1240,46 @@
   // グループ管理 UI
   // ===================================================================
 
-  function renderGroupSelectChips(containerId, selectedGroupId, onSelect) {
+  // isSelected(id)->bool、onToggle(id, isNowSelected)。multi=trueで複数選択可。
+  function renderGroupSelectChips(containerId, isSelected, onToggle, multi) {
     const container = document.getElementById(containerId);
     if (groups.length === 0) {
       container.innerHTML = `<div class="hint" style="color:#e0648a;">グループがまだありません。「グループ管理」タブから作成してください。</div>`;
       return;
     }
     container.innerHTML = groups.map(g => `
-      <div class="chip ${g.id === selectedGroupId ? "selected" : ""}" data-group-id="${g.id}">
+      <div class="chip ${isSelected(g.id) ? "selected" : ""}" data-group-id="${g.id}">
         <span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}
       </div>
     `).join("");
     container.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
-        container.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
-        chip.classList.add("selected");
-        onSelect(chip.dataset.groupId);
+        if (multi) {
+          const on = !chip.classList.contains("selected");
+          chip.classList.toggle("selected", on);
+          onToggle(chip.dataset.groupId, on);
+        } else {
+          container.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
+          chip.classList.add("selected");
+          onToggle(chip.dataset.groupId, true);
+        }
       });
     });
   }
 
-  let selectedSingleGroupId = null;
+  let selectedSingleGroupIds = []; // 新規登録: 複数グループ選択可
   let selectedBulkGroupId = null;
 
   function refreshAllGroupUI() {
-    renderGroupSelectChips("single-group-chips", selectedSingleGroupId, (id) => { selectedSingleGroupId = id; });
-    renderGroupSelectChips("bulk-group-chips", selectedBulkGroupId, (id) => { selectedBulkGroupId = id; });
+    renderGroupSelectChips("single-group-chips",
+      (id) => selectedSingleGroupIds.includes(id),
+      (id, on) => {
+        if (on) selectedSingleGroupIds = [...new Set([...selectedSingleGroupIds, id])];
+        else selectedSingleGroupIds = selectedSingleGroupIds.filter(x => x !== id);
+      }, true);
+    renderGroupSelectChips("bulk-group-chips",
+      (id) => id === selectedBulkGroupId,
+      (id) => { selectedBulkGroupId = id; }, false);
     renderGroupManageList();
     renderAggregateGroupSelect();
   }
@@ -1269,7 +1296,7 @@
       return;
     }
     list.innerHTML = groups.map((g, idx) => {
-      const count = results.filter(r => r.groupId === g.id).length;
+      const count = results.filter(r => resultGroupIds(r).includes(g.id)).length;
       if (g.id === editingGroupId) {
         const swatches = GROUP_COLOR_PALETTE.map(c =>
           `<button class="swatch-btn ${c === g.color ? "selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
@@ -1336,9 +1363,9 @@
     list.querySelectorAll(".gdel-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         const g = getGroupById(btn.dataset.gid);
-        const count = results.filter(r => r.groupId === btn.dataset.gid).length;
+        const count = results.filter(r => resultGroupIds(r).includes(btn.dataset.gid)).length;
         const msg = count > 0
-          ? `「${g.name}」を削除します。このグループの${count}人は「未設定」になります。よろしいですか？`
+          ? `「${g.name}」を削除します。このグループの${count}人からこのグループが外れます（他のグループには残ります）。よろしいですか？`
           : `「${g.name}」を削除します。よろしいですか？`;
         if (confirm(msg)) {
           await deleteGroupById(btn.dataset.gid);
@@ -1556,7 +1583,7 @@
       </div>`;
       return;
     }
-    const members = results.filter(r => r.groupId === groupId);
+    const members = results.filter(r => resultGroupIds(r).includes(groupId));
     if (members.length === 0) {
       container.innerHTML = `<div class="empty-state">
         <div class="emoji">🌙</div>
@@ -1564,12 +1591,16 @@
       </div>`;
       return;
     }
+    container.innerHTML = `<div class="agg-count">このグループ：${members.length}人で集計</div>` + aggregateBodyHtml(members);
+  }
+
+  // 集計本体(円グラフ＋動物・レール・福の神ランキング)を組み立てる。
+  // グループ集計と図書館のジャンル集計で共用する。members は .calc を持つ配列。
+  function aggregateBodyHtml(members) {
     const honshitsuCounts = calcGroupCounts(members, "honshitsu");
     const hyomenCounts = calcGroupCounts(members, "hyomen");
     const ishiCounts = calcGroupCounts(members, "ishi");
-
-    container.innerHTML = `
-      <div class="agg-count">このグループ：${members.length}人で集計</div>
+    return `
       <div class="pie-grid">
         ${pieCardHtml("本質グループ", honshitsuCounts)}
         ${pieCardHtml("表面グループ", hyomenCounts)}
@@ -1584,12 +1615,12 @@
       </div>
       <div class="card" style="margin-top:18px;">
         <h2>🚃 レール 集計</h2>
-        <div class="hint" style="margin-bottom:14px;">グループ内で多いレールを順に表示します</div>
+        <div class="hint" style="margin-bottom:14px;">多いレールを順に表示します</div>
         ${railRankingHtml(members)}
       </div>
       <div class="card" style="margin-top:18px;">
         <h2>🍀 福の神No. 集計</h2>
-        <div class="hint" style="margin-bottom:14px;">1つめ・2つめ・3つめの数字ごとに、グループ内で多い番号を表示します</div>
+        <div class="hint" style="margin-bottom:14px;">1つめ・2つめ・3つめの数字ごとに、多い番号を表示します</div>
         ${fukuRankingHtml("1つめの数字", "n1", members)}
         ${fukuRankingHtml("2つめの数字", "n2", members)}
         ${fukuRankingHtml("3つめの数字", "n3", members)}
@@ -1750,7 +1781,7 @@
     const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
     const tabBtn = document.getElementById("tab-library");
     if (tabBtn) tabBtn.style.display = isAdmin ? "" : "none";
-    if (isAdmin && !libraryRendered) { renderLibrary(); libraryRendered = true; }
+    if (isAdmin && !libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
   }
 
   window.addEventListener("metaq:auth-ready", (e) => {
@@ -1769,7 +1800,6 @@
         <div class="row-top">
           <span class="num">No.${String(c.bunrui60).padStart(2, "0")}</span>
           <span class="gz">${c.bunrui60_gz}　${c.bunrui60_kanGroup}</span>
-          ${groupChipHtml(c.honshitsu.group)}
         </div>
         <div class="chara-name">${escapeHtml(c.bunrui60_charaName)}</div>
         <div class="fuku-badge">福の神No. <span class="fuku-num">${c.fukuNoKami.label}</span></div>
@@ -1822,6 +1852,31 @@
     container.innerHTML = html;
   }
 
+  // 図書館のジャンル集計用セレクトを用意する
+  function renderLibraryGenreSelect() {
+    const sel = document.getElementById("library-agg-genre");
+    if (!sel || sel.dataset.ready) return;
+    const genres = [...new Set(LIBRARY_PEOPLE.map(p => p.genre))];
+    sel.innerHTML = `<option value="">集計しない（一覧のみ）</option>` +
+      genres.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
+    sel.dataset.ready = "1";
+  }
+
+  // 選択したジャンルの人物(生年月日が確定している人)で集計を表示する
+  function renderLibraryAggregate(genre) {
+    const box = document.getElementById("library-agg");
+    if (!box) return;
+    if (!genre) { box.innerHTML = ""; return; }
+    const members = LIBRARY_PEOPLE.filter(p => p.genre === genre)
+      .map(p => { const d = libDateParts(p.date); return d ? { calc: calcFourPillars(d.y, d.m, d.d, null, null) } : null; })
+      .filter(Boolean);
+    if (members.length === 0) {
+      box.innerHTML = `<div class="empty-state"><div class="emoji">🌙</div><p>このジャンルには集計できる（生年月日が確定した）人物がいません。</p></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="agg-count">${escapeHtml(genre)}：${members.length}名で集計</div>` + aggregateBodyHtml(members);
+  }
+
   // ===================================================================
   // イベント登録
   // ===================================================================
@@ -1856,6 +1911,14 @@
     // 図書館 - 検索
     const librarySearch = document.getElementById("library-search");
     if (librarySearch) librarySearch.addEventListener("input", () => renderLibrary());
+    // 図書館 - ジャンル別集計
+    renderLibraryGenreSelect();
+    const libraryAggGenre = document.getElementById("library-agg-genre");
+    if (libraryAggGenre) libraryAggGenre.addEventListener("change", (e) => renderLibraryAggregate(e.target.value));
+    // 図書館タブを開いたときも集計セレクトを用意
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      if (btn.dataset.tab === "library") btn.addEventListener("click", renderLibraryGenreSelect);
+    });
 
     // 1人ずつ診断
     document.getElementById("single-submit").addEventListener("click", async () => {
@@ -1866,16 +1929,18 @@
       const date = parseFlexibleDate(dateVal);
       if (!date) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
       if (date.m < 1 || date.m > 12 || date.d < 1 || date.d > 31) { showToast("日付の値が正しくありません"); return; }
-      if (!selectedSingleGroupId) { showToast("グループを選択してください"); return; }
+      if (selectedSingleGroupIds.length === 0) { showToast("グループを1つ以上選択してください"); return; }
 
       const time = parseFlexibleTime(timeVal);
       const h = time ? time.h : null;
       const mi = time ? time.mi : null;
 
-      await addResult(name, date.y, date.m, date.d, h, mi, selectedSingleGroupId);
+      await addResult(name, date.y, date.m, date.d, h, mi, selectedSingleGroupIds);
       document.getElementById("single-name").value = "";
       document.getElementById("single-date").value = "";
       document.getElementById("single-time").value = "";
+      selectedSingleGroupIds = [];
+      refreshAllGroupUI();
       switchTab("results");
       showToast(`${name || "診断結果"}を登録しました`);
     });
