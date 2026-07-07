@@ -141,7 +141,11 @@
     let yy = y, mm = m;
     if (mm <= 2) { yy -= 1; mm += 12; }
     const A = Math.floor(yy / 100);
-    const B = 2 - A + Math.floor(A / 4);
+    // グレゴリオ暦への切替(1582/10/15)より前の日付は、歴史資料上ユリウス暦で
+    // 記録されているのが通例のため、ユリウス暦として扱う(Meeusの標準的な方法)。
+    // これを分けないと、切替前の日付(織田信長など)の日柱が約10日ズレる。
+    const isGregorian = (y > 1582) || (y === 1582 && (m > 10 || (m === 10 && d >= 15)));
+    const B = isGregorian ? (2 - A + Math.floor(A / 4)) : 0;
     const jd = Math.floor(365.25 * (yy + 4716)) + Math.floor(30.6001 * (mm + 1)) + d + B - 1524.5;
     return jd + (h / 24.0);
   }
@@ -501,6 +505,14 @@
         delete updated.groupId;
         await fs.saveResult(updated);
       }
+      // 並び順設定(groupOrder)からも削除したグループのIDを取り除く(ゴミが溜まらないように)
+      if (Array.isArray(appSettings.groupOrder) && appSettings.groupOrder.includes(groupId)) {
+        const pruned = appSettings.groupOrder.filter(id => id !== groupId);
+        appSettings = { ...appSettings, groupOrder: pruned };
+        if (fs.saveSettings) {
+          try { await fs.saveSettings({ groupOrder: pruned }); } catch (e) { console.error(e); }
+        }
+      }
       scheduleSheetSync();
     } catch (e) {
       console.error(e);
@@ -554,6 +566,14 @@
     return s;
   }
 
+  // 実在する日付かどうか(2月29日のうるう年判定・6月31日の排除など)
+  function isValidYmd(y, m, d) {
+    if (m < 1 || m > 12 || d < 1) return false;
+    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return d <= dim[m - 1];
+  }
+
   function parseFlexibleDate(str) {
     str = normalizeNumericString(str);
     if (!str) return null;
@@ -564,14 +584,11 @@
     compact = compact.replace(/\s+/g, ""); // 残りの空白も除去
 
     let m = compact.match(/^(\d{4})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
-    if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+    if (m && isValidYmd(+m[1], +m[2], +m[3])) return { y: +m[1], m: +m[2], d: +m[3] };
 
     // パターンB: 区切りなし 8桁 (19900624) または 6桁(YYMMDD想定はせず、YYYYMMDDのみ厳格対応)
     m = compact.match(/^(\d{4})(\d{2})(\d{2})$/);
-    if (m) {
-      const mm = +m[2], dd = +m[3];
-      if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) return { y: +m[1], m: mm, d: dd };
-    }
+    if (m && isValidYmd(+m[1], +m[2], +m[3])) return { y: +m[1], m: +m[2], d: +m[3] };
 
     return null;
   }
@@ -642,19 +659,6 @@
     scheduleSheetSync();
   }
 
-  async function setResultGroups(id, groupIds) {
-    const r = results.find(r => r.id === id);
-    if (!r) return;
-    const updated = { ...r, groupIds: (groupIds || []).filter(Boolean) };
-    delete updated.groupId;
-    const fs = getFS();
-    if (fs) {
-      try { await fs.saveResult(updated); } catch (e) { console.error(e); showToast("更新に失敗しました"); return; }
-    }
-    results = results.map(x => x.id === id ? updated : x);
-    renderResults();
-    scheduleSheetSync();
-  }
 
   function groupChipHtml(group) {
     return `<span class="group-chip ${group}">${GROUP_LABEL[group]}</span>`;
@@ -724,7 +728,7 @@
         : (entry.name === "（名前未入力）" ? "" : entry.name);
       const groupChecks = groups.map(g =>
         `<label class="grp-check"><input type="checkbox" class="edit-group" value="${g.id}" ${gids.includes(g.id) ? "checked" : ""}>
-          <span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}</label>`
+          <span class="swatch" style="background:${safeColor(g.color)}"></span>${escapeHtml(g.name)}</label>`
       ).join("") || `<div class="hint">グループがありません。「グループ管理」で作成してください。</div>`;
       return `
       <div class="result-card">
@@ -746,7 +750,7 @@
     }
     const gObjs = gids.map(id => getGroupById(id)).filter(Boolean);
     const groupBadge = gObjs.length
-      ? gObjs.map(g => `<span class="rc-group"><span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}</span>`).join("")
+      ? gObjs.map(g => `<span class="rc-group"><span class="swatch" style="background:${safeColor(g.color)}"></span>${escapeHtml(g.name)}</span>`).join("")
       : `<span class="rc-group" style="color:#cfc3d6;">未設定</span>`;
 
     // 性・名・備考があればその順で組み立てる。性/名が無ければ従来のnameを使う(後方互換)
@@ -797,6 +801,12 @@
     }[c]));
   }
 
+  // データ由来の色をstyle属性やスプレッドシートに使う前の安全チェック。
+  // #rgb/#rrggbb形式以外(壊れたデータや紛れ込んだ文字列)はグレーに置き換える。
+  function safeColor(c) {
+    return /^#[0-9a-fA-F]{3,8}$/.test(String(c || "")) ? c : "#cccccc";
+  }
+
   function renderResultsGroupFilterOptions() {
     const sel = document.getElementById("results-group-filter");
     const current = sel.value || "all";
@@ -831,7 +841,32 @@
       </div>`;
       return;
     }
+    // 編集中に再描画(他端末の更新やグループ変更の反映)が起きても、
+    // 入力途中の内容が消えないように退避しておく
+    let editDraft = null;
+    if (editingResultId && list.querySelector(".edit-form")) {
+      const f = list.querySelector(".edit-form");
+      editDraft = {
+        name: f.querySelector(".edit-name").value,
+        date: f.querySelector(".edit-date").value,
+        time: f.querySelector(".edit-time").value,
+        note: f.querySelector(".edit-note").value,
+        groupIds: [...f.querySelectorAll(".edit-group:checked")].map(cb => cb.value)
+      };
+    }
+
     list.innerHTML = filtered.map(renderResultCard).join("");
+
+    // 退避した入力途中の内容を新しいフォームに書き戻す
+    if (editDraft && list.querySelector(".edit-form")) {
+      const f = list.querySelector(".edit-form");
+      f.querySelector(".edit-name").value = editDraft.name;
+      f.querySelector(".edit-date").value = editDraft.date;
+      f.querySelector(".edit-time").value = editDraft.time;
+      f.querySelector(".edit-note").value = editDraft.note;
+      f.querySelectorAll(".edit-group").forEach(cb => { cb.checked = editDraft.groupIds.includes(cb.value); });
+    }
+
     list.querySelectorAll(".del-btn").forEach(btn => {
       btn.addEventListener("click", () => deleteResult(btn.dataset.id));
     });
@@ -1093,6 +1128,11 @@
   let appSettings = {};       // Firestoreの設定購読で更新される
   let sheetSyncTimer = null;  // 連続操作をまとめるためのデバウンスタイマー
   let sheetSyncing = false;
+  let currentUid = null;      // ログイン中のFirebaseユーザーID(GAS側のアカウント照合に使う)
+
+  window.addEventListener("metaq:auth-ready", (e) => {
+    currentUid = (e.detail && e.detail.uid) || null;
+  });
 
   window.addEventListener("metaq:settings-updated", (e) => {
     appSettings = e.detail.settings || {};
@@ -1126,11 +1166,14 @@
 
   // 1行分のセル背景色を作る(アプリと同じ配色をスプレッドシートにも反映する)
   // base: 縞模様用の地の色。グループ名・レール・本質/表面/意思・時柱のセルに色を付ける
-  function resultRowColors(r, base) {
+  // sheetColor: 書き込み先シートのグループ色。複数グループ所属の人でも、
+  // そのシートのグループの色で塗る(先頭グループの色だと文脈と食い違うため)
+  function resultRowColors(r, base, sheetColor) {
     const c = r.calc;
     const bg = Array(RESULT_HEADERS.length).fill(base);
     const g = getGroupById(resultGroupIds(r)[0]);
-    if (g) bg[3] = g.color;                                   // グループ名(複数時は先頭の色)
+    const gc = sheetColor || (g && g.color);
+    if (gc) bg[3] = safeColor(gc);                            // グループ名
     const railColor = RAIL_COLOR[c.rail.rail];
     if (railColor) { bg[6] = railColor; bg[7] = railColor; }  // レール
     bg[16] = bg[17] = PIE_COLORS[c.honshitsu.group];          // 本質
@@ -1163,17 +1206,18 @@
     // → 表示項目や配色を変えたいときは、このアプリを直すだけで反映される
     //   (GAS側は汎用なので貼り替え不要)。
     function makeSheet(name, tabColor, members) {
+      const tc = tabColor ? safeColor(tabColor) : null;
       const values = [RESULT_HEADERS.slice()];
-      const backgrounds = [RESULT_HEADERS.map(() => tabColor || "#d9b3ff")];
+      const backgrounds = [RESULT_HEADERS.map(() => tc || "#d9b3ff")];
       const fontWeights = [RESULT_HEADERS.map(() => "bold")];
       members.forEach((r, i) => {
         values.push(resultToRow(r));
-        backgrounds.push(resultRowColors(r, stripe(i)));
+        backgrounds.push(resultRowColors(r, stripe(i), tc));
         fontWeights.push(RESULT_HEADERS.map(() => "normal"));
       });
       return {
         name: uniqueName(sanitizeSheetName(name)),
-        tabColor: tabColor || null,
+        tabColor: tc,
         frozenRows: 1,
         autoResize: true,
         values, backgrounds, fontWeights
@@ -1189,7 +1233,9 @@
     if (ungrouped.length > 0) {
       sheets.push(makeSheet("グループ未設定", "#cccccc", ungrouped));
     }
-    return { token: SHEET_SYNC_TOKEN, sheets };
+    // uid: GAS側で「このスプレッドシートの持ち主のアカウントか」を照合するために送る。
+    // 別アカウントの同期で他人のシートが消されるのを防ぐ。
+    return { token: SHEET_SYNC_TOKEN, uid: currentUid, sheets };
   }
 
   // データ変更後に呼ぶ。連続操作(一括登録など)は1回の送信にまとめる
@@ -1206,6 +1252,13 @@
     const url = getSheetUrl();
     if (!url) {
       if (manual) showToast("先にWebアプリのURLを設定してください");
+      return;
+    }
+    // Firestoreからの初回読み込みが終わる前に同期すると、空のデータで
+    // シートを上書き(=全消去)してしまうため、読み込み完了まで待つ
+    if (!dataReady) {
+      if (manual) showToast("データを読み込み中です。少し待ってからもう一度お試しください");
+      scheduleSheetSync();
       return;
     }
     if (sheetSyncing) { scheduleSheetSync(); return; }
@@ -1229,8 +1282,13 @@
       if (manual) showToast("スプレッドシートに同期しました");
     } catch (e) {
       console.error("sheet sync failed:", e);
-      setSheetSyncStatus("⚠️ 同期に失敗しました。URLとデプロイ設定(アクセス:全員)を確認してください。");
-      if (manual) showToast("スプレッドシートへの同期に失敗しました");
+      if (String(e.message).includes("different-account")) {
+        setSheetSyncStatus("⚠️ このスプレッドシートは別のアカウントと連携されています。アカウントごとに別のスプレッドシートを用意してください。");
+        if (manual) showToast("このスプレッドシートは別のアカウント専用です");
+      } else {
+        setSheetSyncStatus("⚠️ 同期に失敗しました。URLとデプロイ設定(アクセス:全員)を確認してください。");
+        if (manual) showToast("スプレッドシートへの同期に失敗しました");
+      }
     } finally {
       sheetSyncing = false;
     }
@@ -1249,7 +1307,7 @@
     }
     container.innerHTML = groups.map(g => `
       <div class="chip ${isSelected(g.id) ? "selected" : ""}" data-group-id="${g.id}">
-        <span class="swatch" style="background:${g.color}"></span>${escapeHtml(g.name)}
+        <span class="swatch" style="background:${safeColor(g.color)}"></span>${escapeHtml(g.name)}
       </div>
     `).join("");
     container.querySelectorAll(".chip").forEach(chip => {
@@ -1295,16 +1353,26 @@
       </div>`;
       return;
     }
+    // 編集中に再描画が起きても入力途中の内容が消えないように退避しておく
+    let gEditDraft = null;
+    if (editingGroupId && list.querySelector(".group-item.editing")) {
+      const item = list.querySelector(".group-item.editing");
+      const sel = item.querySelector(".color-picker .swatch-btn.selected");
+      gEditDraft = { name: item.querySelector(".gedit-name").value, color: sel ? sel.dataset.color : null };
+    }
+
     list.innerHTML = groups.map((g, idx) => {
       const count = results.filter(r => resultGroupIds(r).includes(g.id)).length;
       if (g.id === editingGroupId) {
+        const selColor = (gEditDraft && gEditDraft.color) || g.color;
+        const editName = gEditDraft ? gEditDraft.name : g.name;
         const swatches = GROUP_COLOR_PALETTE.map(c =>
-          `<button class="swatch-btn ${c === g.color ? "selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+          `<button class="swatch-btn ${c === selColor ? "selected" : ""}" data-color="${c}" style="background:${c}" title="${c}"></button>`
         ).join("");
         return `
         <div class="group-item editing">
           <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
-            <input type="text" class="gedit-name" value="${escapeHtml(g.name)}" placeholder="グループ名">
+            <input type="text" class="gedit-name" value="${escapeHtml(editName)}" placeholder="グループ名">
             <div class="color-picker">${swatches}</div>
             <div style="display:flex; gap:8px;">
               <button class="gedit-save" data-gid="${g.id}">保存</button>
@@ -1319,7 +1387,7 @@
           <button class="gup-btn" data-gid="${g.id}" ${idx === 0 ? "disabled" : ""} title="上へ">▲</button>
           <button class="gdown-btn" data-gid="${g.id}" ${idx === groups.length - 1 ? "disabled" : ""} title="下へ">▼</button>
         </div>
-        <span class="swatch" style="background:${g.color}"></span>
+        <span class="swatch" style="background:${safeColor(g.color)}"></span>
         <span class="gname">${escapeHtml(g.name)}</span>
         <span class="gcount">${count}人</span>
         <button class="gedit-btn" data-gid="${g.id}" title="編集">✎</button>

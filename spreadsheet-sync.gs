@@ -40,6 +40,24 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetsData = data.sheets || [];
     const props = PropertiesService.getScriptProperties();
+
+    // アカウント照合: 最初に同期したアカウントをこのスプレッドシートの
+    // 持ち主として記録し、別のアカウントからの同期は拒否する。
+    // (別アカウントの空データで持ち主のシートが消されるのを防ぐ)
+    if (data.uid) {
+      const ownerUid = props.getProperty("ownerUid");
+      if (!ownerUid) {
+        props.setProperty("ownerUid", data.uid);
+      } else if (ownerUid !== data.uid) {
+        return jsonOut({ ok: false, error: "different-account" });
+      }
+    }
+
+    // 所有者の登録・確認だけを行うモード(初期設定用)。シートには一切触れない。
+    if (data.claimOnly) {
+      return jsonOut({ ok: true, owner: props.getProperty("ownerUid") || null });
+    }
+
     const prevManaged = JSON.parse(props.getProperty("managedSheets") || "[]");
     const currentNames = sheetsData.map(function (s) { return s.name; });
 
@@ -47,13 +65,16 @@ function doPost(e) {
     sheetsData.forEach(function (info) { writeSheet(ss, info); });
 
     // 以前このスクリプトが作成し、今回送られてこなかったシート
-    // (=アプリ側で削除されたグループ)を削除する
-    prevManaged.forEach(function (name) {
-      if (currentNames.indexOf(name) === -1) {
-        const sheet = ss.getSheetByName(name);
-        if (sheet && ss.getSheets().length > 1) ss.deleteSheet(sheet);
-      }
-    });
+    // (=アプリ側で削除されたグループ)を削除する。
+    // uidが無い(古いバージョンのアプリからの)送信では、安全のため削除しない。
+    if (data.uid) {
+      prevManaged.forEach(function (name) {
+        if (currentNames.indexOf(name) === -1) {
+          const sheet = ss.getSheetByName(name);
+          if (sheet && ss.getSheets().length > 1) ss.deleteSheet(sheet);
+        }
+      });
+    }
     props.setProperty("managedSheets", JSON.stringify(currentNames));
 
     return jsonOut({ ok: true, sheets: currentNames.length });
