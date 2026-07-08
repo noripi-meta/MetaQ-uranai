@@ -411,6 +411,18 @@
   .compat-rank-head{ display:flex; align-items:center; gap:8px; }
   .compat-rank-medal{ font-size:18px; }
   .compat-rank-name{ font-size:12px; font-weight:700; color:var(--ink-soft); font-style:italic; }
+  .compat-rank-tag{ margin-top:4px; font-size:11.5px; font-weight:800; color:var(--pink-deep); }
+  /* 解説メニュー */
+  .kaisetsu-menu{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .kaisetsu-menu-btn{
+    padding:9px 16px; border:1.5px solid #e6dcef; border-radius:999px;
+    background:#fff; color:var(--ink); font-size:13px; font-weight:800; cursor:pointer;
+  }
+  .kaisetsu-menu-btn.active{
+    border-color:transparent; color:#fff;
+    background:linear-gradient(90deg,var(--lavender-deep),var(--pink-deep));
+    box-shadow:0 3px 10px rgba(180,140,220,.28);
+  }
   /* 発生確率 */
   .prob-row{ margin-bottom:9px; }
   .prob-line{ display:flex; align-items:center; gap:8px; margin-bottom:3px; }

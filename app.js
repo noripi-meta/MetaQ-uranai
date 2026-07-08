@@ -2483,10 +2483,10 @@
       { code: "I", name: "intimacy", desc: "日常生活の景色に自然と溶け込むような、家族にも似た絆です。一緒にいるだけで張り詰めた心が解け、肩の力を抜いていられます。特別なイベントがなくとも、ただ同じ時間を共有すること自体が、あなたにとって何よりの癒やしとなる関係です。" },
       { code: "D", name: "do", desc: "信頼という名の階段を、一歩ずつ着実に上っていくような関係性です。最初から全てをさらけ出すのではなく、時間をかけて絆を深めることで、極めて安定した関係を築けます。突発的な衝突が少なく、穏やかな日常を共に歩むパートナーとして理想的です。" },
     ]},
-    { icon: "💕", title: "恋愛（刺激）", sub: "心のスパイス", ranks: [
-      { code: "A", name: "ace", desc: "魂が共鳴し合うような、運命的な強烈さを伴う関係です。自分自身の内面を相手の中に見てしまい、情熱と葛藤が入り混じるドラマチックな展開が特徴的。人生という舞台の密度を最高値まで高めてくれる、一生に一度の忘れられない刺激となります。" },
-      { code: "H", name: "high", desc: "脳を覚醒させるような、終わりのないロマンチックなときめきを与えてくれる相手です。互いの独自の感性がぶつかり合い、新しい発見が尽きないため、日常が常に彩りに満ちあふれます。常に新鮮な刺激を求める二人にとって、最高のスパイスとなります。" },
-      { code: "E", name: "even", desc: "鏡のように似通った性質を持つ二人が生み出す、爆発的なエネルギー。衝突する際も、燃え上がる際も、その熱量は凄まじいものがあります。退屈な平穏よりも、「生きている実感」を何よりも優先したい方にとって、この上ない興奮をもたらす相性です。" },
+    { icon: "💕", title: "恋愛（刺激・愛情）", sub: "人生の彩りとなる関係／ときめきと深い絆", ranks: [
+      { code: "A", name: "ace", tag: "「運命」としての恋愛（ドラマ・シンクロニシティ・魂の共鳴）", desc: "自分自身を映し出す鏡のような存在。出会った瞬間に魂レベルの波長一致を感じる、宿曜における究極の絆です。単なるドキドキを超えた「自分を見つめ直す」という精神的な深まりがあり、互いの存在が人生の密度を最高値まで引き上げます。これこそが、他では代替できない恋愛の最高峰です。" },
+      { code: "B", name: "best", tag: "「生活」としての恋愛（信頼・協力・持続可能な幸福）", desc: "刺激による高揚と、安心感による安定を併せ持つ、最もバランスの取れた幸福な相性です。相手の長所を認め合い、互いを支える信頼関係が自然に育まれるため、ドラマチックな波乱を望まずとも、深い充足感の中で愛を育てることができます。人生を長く共に歩むパートナーとして、これ以上の選択肢はありません。" },
+      { code: "H", name: "high", tag: "「感性」としての恋愛（発見・創造・新鮮な驚き）", desc: "互いの感性や世界観をぶつけ合い、化学反応を楽しむエキサイティングな関係です。創造性やユニークなアイデアを刺激し合うため、退屈とは無縁の時間を過ごせます。適度な緊張感が常に新しいトキメキを生み出し、二人だけの特別な世界を築き上げる「感性の伴侶」として刺激的な日々をもたらします。" },
     ]},
     { icon: "💼", title: "ビジネス（成果）", sub: "目標達成のブースター", ranks: [
       { code: "F", name: "focus", desc: "ビジネスにおける究極のパートナーシップ。感情的なしがらみを排し、お互いの実力をプロフェッショナルとして認め合う、非常に機能的で健全な関係です。迷いのない意志決定と、驚くべきスピードでの目標達成が可能となる、繁栄のためのベストペアです。" },
@@ -2519,6 +2519,7 @@
         <div class="rc-detail-body">${p.ranks.map((r, i) => `
           <div class="compat-rank">
             <div class="compat-rank-head"><span class="compat-rank-medal">${medals[i]}</span><span class="compat-code">${r.code}</span><span class="compat-rank-name">${escapeHtml(r.name)}</span></div>
+            ${r.tag ? `<div class="compat-rank-tag">${escapeHtml(r.tag)}</div>` : ""}
             <div class="compat-desc" style="margin-top:5px;">${escapeHtml(r.desc)}</div>
           </div>`).join("")}</div>
       </details>`).join("")}
@@ -2713,7 +2714,7 @@
   // ---------- 読み方ガイド（四柱・五行などの解説集。項目は今後追加可） ----------
   const KAISETSU_SECTIONS = [
     {
-      icon: "🏛️", title: "四柱（年・月・日・時）の読み解き方",
+      icon: "🏛️", menu: "四柱の読み方", title: "四柱（年・月・日・時）の読み解き方",
       intro: "それぞれの柱は「人生のどの時期、またはどの側面」を担当しているかという役割分担があります。",
       items: [
         { head: "年柱（ねんちゅう）：先祖・幼少期・社会の入り口", body: "役割：自分のルーツ、家系、生まれてから10代後半までの環境。\n読み方：自分が社会からどう見られているかという「第一印象」や、親や先祖から受け継いだ「土台」を表します。ここが強いと、社会的な環境に恵まれていたり、伝統的なものを引き継ぐ運命を持っていたりすることが多いです。" },
@@ -2724,7 +2725,7 @@
       ]
     },
     {
-      icon: "🌳", title: "五行（木・火・土・金・水）バランスの読み方",
+      icon: "🌳", menu: "五行バランス", title: "五行（木・火・土・金・水）バランスの読み方",
       intro: "五行のバランスは、その人の心身の傾向や行動パターンに強く影響します。「多すぎる場合」の過剰な性質と、「一つだけ欠けている場合」の欠落・代償的な性質を10パターンに整理しました。",
       items: [
         { head: "木が多すぎる：【過信と攻撃性】", body: "成長のエネルギーが強すぎるため、自己主張が激しく、自分の考えを曲げない頑固さが出やすくなります。他者への攻撃性や、コントロール欲求が強くなる傾向があります。" },
@@ -2742,18 +2743,30 @@
     },
   ];
 
-  function renderKaisetsu() {
-    const box = document.getElementById("kaisetsu-content");
-    if (!box || box.dataset.ready) return;
-    box.innerHTML = KAISETSU_SECTIONS.map(sec => `<div class="card">
+  let kaisetsuActive = 0;
+  function renderKaisetsuSection(i) {
+    kaisetsuActive = i;
+    const body = document.getElementById("kaisetsu-body");
+    const sec = KAISETSU_SECTIONS[i];
+    if (!body || !sec) return;
+    body.innerHTML = `<div class="card">
       <h2>${sec.icon} ${escapeHtml(sec.title)}</h2>
       <div class="hint" style="margin-bottom:10px;">${escapeHtml(sec.intro)}</div>
       ${sec.items.map(it => `<details class="rc-detail compat-item">
         <summary>${escapeHtml(it.head)}</summary>
         <div class="rc-detail-body"><div class="det-row" style="line-height:1.9; white-space:pre-wrap;">${escapeHtml(it.body)}</div></div>
       </details>`).join("")}
-    </div>`).join("");
+    </div>`;
+    document.querySelectorAll(".kaisetsu-menu-btn").forEach(b => b.classList.toggle("active", +b.dataset.sec === i));
+  }
+  function renderKaisetsu() {
+    const box = document.getElementById("kaisetsu-content");
+    if (!box || box.dataset.ready) return;
+    box.innerHTML = `<div class="kaisetsu-menu">${KAISETSU_SECTIONS.map((s, i) =>
+      `<button class="kaisetsu-menu-btn${i === 0 ? " active" : ""}" data-sec="${i}">${s.icon} ${escapeHtml(s.menu || s.title)}</button>`).join("")}</div>
+      <div id="kaisetsu-body"></div>`;
     box.dataset.ready = "1";
+    renderKaisetsuSection(0);
   }
 
   let libraryRendered = false;
@@ -2957,6 +2970,8 @@
       // 相性診断ボタン(相性タブ, 動的生成)
       if (e.target.closest("#compat-run")) renderCompatResult();
       if (e.target.closest("#compat-list-run")) renderCompatList();
+      const kbtn = e.target.closest(".kaisetsu-menu-btn");
+      if (kbtn) renderKaisetsuSection(+kbtn.dataset.sec);
     });
     // 相性タブ: グループ選択→人セレクトを絞り込み(委譲)
     document.addEventListener("change", (e) => {
