@@ -394,12 +394,20 @@
     color:#fff; font-weight:800; font-size:13px;
   }
   /* 相性診断 */
-  .compat-pick{ margin-bottom:8px; }
+  .compat-pick{ margin-bottom:10px; }
   .compat-pick label{ display:block; font-size:11px; font-weight:800; color:var(--lavender-deep); margin-bottom:3px; }
-  .compat-pick input{
+  .compat-pick input, .compat-pick select{
     width:100%; box-sizing:border-box; padding:9px 11px;
     border:1.5px solid #e6dcef; border-radius:10px; font-size:14px; color:var(--ink); background:#fff;
   }
+  .compat-pick-row{ display:flex; gap:6px; }
+  .compat-pick-row select{ flex:1; min-width:0; }
+  .compat-manual{ margin-top:5px; font-size:13px !important; }
+  /* 相性一覧 */
+  .compat-list-group{ margin-bottom:12px; }
+  .compat-list-head{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:800; color:var(--ink); margin-bottom:5px; }
+  .compat-list-people{ display:flex; flex-wrap:wrap; gap:6px; padding-left:2px; }
+  .compat-list-chip{ font-size:12px; font-weight:700; color:var(--ink); background:#f4ecfb; border:1px solid #e6dcef; border-radius:999px; padding:4px 11px; }
   .compat-run-btn{
     width:100%; margin-top:6px; padding:11px; border:none; border-radius:12px;
     background:linear-gradient(90deg,var(--lavender-deep),var(--pink-deep)); color:#fff;
@@ -1035,7 +1043,7 @@
   .rcal-head{ text-align:center; font-size:10px; font-weight:800; color:var(--ink-soft); padding:4px 0; }
   .rcal-head.sun{ color:#e0748c; } .rcal-head.sat{ color:#5aa9e0; }
   .rcal-cell{
-    min-height:46px; border-radius:8px; padding:3px 2px 4px;
+    min-height:54px; border-radius:8px; padding:3px 2px 4px;
     display:flex; flex-direction:column; align-items:center; gap:1px;
     border-top:3px solid transparent; background:#faf7fc;
   }
@@ -1043,6 +1051,7 @@
   .rcal-cell.today{ outline:2px solid var(--pink-deep); outline-offset:-2px; }
   .rcal-d{ font-size:11px; font-weight:700; color:var(--ink); }
   .rcal-r{ font-size:10px; font-weight:800; line-height:1.2; }
+  .rcal-n{ font-size:11px; font-weight:800; color:var(--ink-soft); line-height:1; }
   .rcal-legend{ display:flex; flex-wrap:wrap; gap:6px 10px; justify-content:center; margin-top:12px; font-size:10px; color:var(--ink-soft); }
   .rcal-legend span{ display:inline-flex; align-items:center; gap:3px; }
   .rcal-legend i{ width:9px; height:9px; border-radius:2px; display:inline-block; }
@@ -1085,7 +1094,8 @@
     <button class="tab-btn" data-tab="groups">🗂️ グループ管理</button>
     <button class="tab-btn" data-tab="aggregate">📊 グループ集計</button>
     <button class="tab-btn" data-tab="library" id="tab-library" style="display:none;">📚 図書館</button>
-    <button class="tab-btn" data-tab="compat" id="tab-compat" style="display:none;">💞 相性ガイド</button>
+    <button class="tab-btn" data-tab="compat" id="tab-compat" style="display:none;">💞 相性</button>
+    <button class="tab-btn" data-tab="kaisetsu" id="tab-kaisetsu" style="display:none;">📖 解説</button>
   </div>
 
   <!-- 1人ずつ入力 -->
@@ -1238,10 +1248,19 @@
   <!-- 相性ガイド（管理者のみ） -->
   <div class="panel" id="panel-compat">
     <header class="hero" style="padding-bottom:6px;">
-      <h1 style="font-size:22px;">💞 相性ガイド</h1>
-      <p>宿曜27宿にもとづく相性コード（A〜N）の解説と、27宿マスタ</p>
+      <h1 style="font-size:22px;">💞 相性</h1>
+      <p>宿曜27宿にもとづく2人の相性診断とコード（A〜N）解説</p>
     </header>
     <div id="compat-content"></div>
+  </div>
+
+  <!-- 解説（読み方ガイド・管理者のみ） -->
+  <div class="panel" id="panel-kaisetsu">
+    <header class="hero" style="padding-bottom:6px;">
+      <h1 style="font-size:22px;">📖 読み方ガイド</h1>
+      <p>四柱推命のさまざまな読み解き方の解説集</p>
+    </header>
+    <div id="kaisetsu-content"></div>
   </div>
 
 </div>

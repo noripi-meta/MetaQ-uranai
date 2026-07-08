@@ -424,6 +424,11 @@
     "活動": "木", "浪費": "木", "調整": "火", "焦燥": "火", "投資": "土",
     "成果": "土", "転換": "金", "完結": "金", "整理": "水", "学習": "水"
   };
+  // リズム名 -> 番号(ISD準拠、カレンダー表示用)
+  const RHYTHM_NUMBER = {
+    "活動": 5, "浪費": 2, "調整": 4, "焦燥": 1, "投資": 8,
+    "成果": 9, "転換": 7, "完結": 10, "整理": 3, "学習": 6
+  };
   // ある対象日(ty/tm/td)の年干・月干・日干を求め、本人の日干から見た通変星でリズムを返す
   function calcRhythm(dayStem, ty, tm, td) {
     const jd = toJulianDay(ty, tm, td, 12);
@@ -2301,14 +2306,55 @@
 
   const COMPAT_BY_CODE = () => Object.fromEntries(COMPAT_CODES.map(c => [c.code, c]));
 
-  // 相性診断の候補(登録済みの人)をdatalistに反映
+  // 登録済み(生年月日あり)の人を {id,name,date,groupIds} で返す
+  function compatPeople() {
+    return results.filter(r => r.birthDate).map(r => ({
+      id: r.id,
+      name: ((r.sei || r.mei) ? [r.sei, r.mei].filter(Boolean).join(" ") : r.name) || "(無名)",
+      date: r.birthDate,
+      groupIds: resultGroupIds(r)
+    }));
+  }
+  function compatGroupOptions() {
+    return `<option value="">グループを選ぶ…</option><option value="__all">（全登録者）</option>` +
+      groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join("");
+  }
+  function compatPersonOptions(groupId) {
+    let people = compatPeople();
+    if (groupId && groupId !== "__all") people = people.filter(p => p.groupIds.includes(groupId));
+    if (!people.length) return `<option value="">（この中に登録者がいません）</option>`;
+    return `<option value="">人を選ぶ…</option>` +
+      people.map(p => `<option value="${escapeHtml(p.date)}">${escapeHtml(p.name)}（${escapeHtml(p.date)}）</option>`).join("");
+  }
+  // 対象(a/b/base)の入力生年月日: 手入力優先、なければ人セレクトの値
+  function compatInputDate(t) {
+    const man = (document.getElementById("compat-" + t) || {}).value || "";
+    if (man.trim()) return man.trim();
+    const sel = document.getElementById("compat-" + t + "-sel");
+    return sel ? sel.value : "";
+  }
+  // グループ/人セレクトを最新の登録データで更新(選択は保持)
   function refreshCompatPeople() {
-    const dl = document.getElementById("compat-people");
-    if (!dl) return;
-    dl.innerHTML = results.map(r => {
-      const nm = ((r.sei || r.mei) ? [r.sei, r.mei].filter(Boolean).join(" ") : r.name) || "";
-      return r.birthDate ? `<option value="${escapeHtml(nm + " " + r.birthDate)}"></option>` : "";
-    }).join("");
+    document.querySelectorAll(".compat-grp").forEach(sel => {
+      const cur = sel.value; sel.innerHTML = compatGroupOptions(); if (cur) sel.value = cur;
+    });
+    ["a", "b", "base"].forEach(t => {
+      const gs = document.querySelector(`.compat-grp[data-target="${t}"]`);
+      const ps = document.getElementById(`compat-${t}-sel`);
+      if (gs && ps) { const cur = ps.value; ps.innerHTML = compatPersonOptions(gs.value); if (cur) ps.value = cur; }
+    });
+    const lg = document.getElementById("compat-list-grp");
+    if (lg) { const cur = lg.value; lg.innerHTML = compatGroupOptions(); if (cur) lg.value = cur; }
+  }
+  // 対象の選択UI(グループ→人 のカスケード + 生年月日直接入力)
+  function compatPickerHtml(target, label) {
+    return `<div class="compat-pick"><label>${label}</label>
+      <div class="compat-pick-row">
+        <select class="compat-grp" data-target="${target}"></select>
+        <select class="compat-per" id="compat-${target}-sel"></select>
+      </div>
+      <input class="compat-manual" id="compat-${target}" placeholder="または生年月日を直接入力（例 1990/06/24）">
+    </div>`;
   }
 
   // 1方向ぶんの相性ブロック(自分→相手)
@@ -2348,14 +2394,40 @@
 
   function renderCompatResult() {
     const out = document.getElementById("compat-result");
-    const a = (document.getElementById("compat-a") || {}).value || "";
-    const b = (document.getElementById("compat-b") || {}).value || "";
+    const a = compatInputDate("a"), b = compatInputDate("b");
     if (!out) return;
-    if (!a.trim() || !b.trim()) { out.innerHTML = `<div class="hint">対象①と②の両方を入力してください。</div>`; return; }
+    if (!a.trim() || !b.trim()) { out.innerHTML = `<div class="hint">対象①と②の両方を選んで（または入力して）ください。</div>`; return; }
     out.innerHTML =
       compatDirectionHtml("① から見た ②", a, b) +
       `<div class="compat-divider"></div>` +
       compatDirectionHtml("② から見た ①", b, a);
+  }
+
+  // グループ内の全員との相性をコード別に一覧
+  function renderCompatList() {
+    const out = document.getElementById("compat-list-result");
+    if (!out) return;
+    const baseDate = compatInputDate("base");
+    if (!baseDate.trim()) { out.innerHTML = `<div class="hint">基準の人を選んでください。</div>`; return; }
+    const listGrp = (document.getElementById("compat-list-grp") || {}).value || "";
+    let people = compatPeople();
+    if (listGrp && listGrp !== "__all") people = people.filter(p => p.groupIds.includes(listGrp));
+    if (!people.length) { out.innerHTML = `<div class="hint">対象の登録者がいません。</div>`; return; }
+    const byCode = {};
+    people.forEach(p => {
+      if (p.date === baseDate) return; // 本人は除外
+      const r = compatBetween(baseDate, p.date);
+      if (!r || !r.code) return;
+      (byCode[r.code] = byCode[r.code] || []).push(p);
+    });
+    const codes = Object.keys(byCode).sort();
+    if (!codes.length) { out.innerHTML = `<div class="hint">相性を計算できる相手がいませんでした。</div>`; return; }
+    const info = COMPAT_BY_CODE();
+    out.innerHTML = `<div class="hint" style="margin:8px 0;">基準の人「自分」から見た相性です（逆から見ると変わる場合があります）。</div>` +
+      codes.map(code => `<div class="compat-list-group">
+        <div class="compat-list-head"><span class="compat-code">${code}</span>${escapeHtml(info[code] ? info[code].headline : "")}</div>
+        <div class="compat-list-people">${byCode[code].map(p => `<span class="compat-list-chip">${escapeHtml(p.name)}</span>`).join("")}</div>
+      </div>`).join("");
   }
 
   function renderCompatGuide() {
@@ -2364,15 +2436,25 @@
     if (!box.dataset.ready) {
       let html = `<div class="card">
         <h2>💞 2人の相性を見る</h2>
-        <div class="hint" style="margin-bottom:8px;">登録済みの人を名前で選ぶか、生年月日を直接入力してください（例 1990/06/24）。相性は宿曜27宿にもとづきます。</div>
-        <div class="compat-pick"><label>対象①（自分）</label><input list="compat-people" id="compat-a" placeholder="名前で検索 または 1990/06/24"></div>
-        <div class="compat-pick"><label>対象②（お相手）</label><input list="compat-people" id="compat-b" placeholder="名前で検索 または 1990/06/24"></div>
-        <datalist id="compat-people"></datalist>
+        <div class="hint" style="margin-bottom:8px;">グループから人を選ぶか、生年月日を直接入力してください。相性は宿曜27宿にもとづきます。</div>
+        ${compatPickerHtml("a", "対象①（自分）")}
+        ${compatPickerHtml("b", "対象②（お相手）")}
         <button id="compat-run" class="compat-run-btn">💞 相性を見る</button>
         <div id="compat-result"></div>
       </div>`;
       html += `<div class="card">
-        <div class="hint" style="margin-bottom:10px;">相性コードA〜Nの解説です（P〜AAは今後追加）。</div>`;
+        <h2>📋 相性一覧（グループ内）</h2>
+        <div class="hint" style="margin-bottom:8px;">基準の人を選ぶと、グループ内の全員との相性をコード別にまとめて表示します。</div>
+        ${compatPickerHtml("base", "基準の人（自分）")}
+        <div class="compat-pick"><label>一覧にするグループ</label>
+          <select id="compat-list-grp"></select>
+        </div>
+        <button id="compat-list-run" class="compat-run-btn">📋 一覧を出す</button>
+        <div id="compat-list-result"></div>
+      </div>`;
+      html += `<div class="card">
+        <h2>📖 相性コードA〜N 解説</h2>
+        <div class="hint" style="margin-bottom:10px;">画面に出る相性コードの意味です。</div>`;
       html += COMPAT_CODES.map(c => `
         <details class="rc-detail compat-item">
           <summary><span class="compat-code">${c.code}</span>${escapeHtml(c.headline)}<small>〜${escapeHtml(c.sub)}〜</small></summary>
@@ -2388,6 +2470,52 @@
     refreshCompatPeople();
   }
 
+  // ---------- 読み方ガイド（四柱・五行などの解説集。項目は今後追加可） ----------
+  const KAISETSU_SECTIONS = [
+    {
+      icon: "🏛️", title: "四柱（年・月・日・時）の読み解き方",
+      intro: "それぞれの柱は「人生のどの時期、またはどの側面」を担当しているかという役割分担があります。",
+      items: [
+        { head: "年柱（ねんちゅう）：先祖・幼少期・社会の入り口", body: "役割：自分のルーツ、家系、生まれてから10代後半までの環境。\n読み方：自分が社会からどう見られているかという「第一印象」や、親や先祖から受け継いだ「土台」を表します。ここが強いと、社会的な環境に恵まれていたり、伝統的なものを引き継ぐ運命を持っていたりすることが多いです。" },
+        { head: "月柱（げっちゅう）：才能・仕事・中年の運気", body: "役割：社会運、仕事観、20代〜40代の運勢。\n読み方：四柱推命で最も重要視される柱です。自分の「本質的な才能」や「どうやって社会に貢献するか」がここに詰まっています。ここにある通変星が、その人が社会で勝負するときの武器になります。" },
+        { head: "日柱（にっちゅう）：自分自身・プライベート・パートナー", body: "役割：自分自身（日干）、配偶者、内面、魂の傾向。\n読み方：一番大切な「自分自身」を表します。月柱が「社会的な顔」なら、日柱は「素の自分」です。また、配偶者との縁や、自分がリラックスしているときにどんな性格が出るかを読み解く際、ここを最も注視します。" },
+        { head: "時柱（じちゅう）：未来・晩年・子供・可能性", body: "役割：晩年の運勢、夢、趣味、部下・子供、隠れた能力。\n読み方：人生が成熟した後の状態や、自分が「心からやりたいこと」を表します。また、仕事以外の「クリエイティブな才能」や、コントロールできる環境（部下や子供など）がここに表れます。" },
+        { head: "【読み解きのコツ】柱同士の「対話」を見る", body: "単体で読むだけでなく、柱同士の「エネルギーの橋渡し」を見ると、その人の人生のストーリーが浮かび上がってきます。\n\n・「年柱」と「月柱」の対比：「自分のルーツ（年）」と「今の仕事（月）」が合致しているか、それとも相反して苦労しているかを見ます。ここがスムーズだと、親の跡を継いだり、順調にステップアップする人生になりやすいです。\n\n・「日柱」と「月柱」の葛藤：社会的な責任（月）と、本当の自分（日）のどちらが強いかを見ます。ここが一致していると「公私混同がない＝ストレスが少ない人生」ですが、違うと「仕事ではこう振る舞っているが、家では全く違う顔」という二面性として現れます。\n\n・「日柱」と「時柱」の成熟度：中年期（日）から晩年（時）にかけて、星がどう変化するかを見ます。「今は忙しい（月）が、晩年は趣味を楽しむ（時）」といった未来予測は、この読み解きから導き出されます。" },
+      ]
+    },
+    {
+      icon: "🌳", title: "五行（木・火・土・金・水）バランスの読み方",
+      intro: "五行のバランスは、その人の心身の傾向や行動パターンに強く影響します。「多すぎる場合」の過剰な性質と、「一つだけ欠けている場合」の欠落・代償的な性質を10パターンに整理しました。",
+      items: [
+        { head: "木が多すぎる：【過信と攻撃性】", body: "成長のエネルギーが強すぎるため、自己主張が激しく、自分の考えを曲げない頑固さが出やすくなります。他者への攻撃性や、コントロール欲求が強くなる傾向があります。" },
+        { head: "火が多すぎる：【激しさと落ち着きのなさ】", body: "情熱や表現欲が強すぎて、せっかちで感情の起伏が非常に激しくなります。常に動いていないと気が済まず、エネルギーを出し切る前に心身が疲弊しやすい状態です。" },
+        { head: "土が多すぎる：【保守と執着】", body: "安定と蓄積の性質が過剰になり、変化を極端に嫌うようになります。過去への執着や思考の停滞が強く、新しい環境に適応するのに大きな苦労を伴います。" },
+        { head: "金が多すぎる：【潔癖と冷徹】", body: "正義感や決断力が鋭すぎ、白黒はっきりさせようとする厳しさが強くなります。自分にも他人にも非常に厳しく、柔軟性を欠いた「冷たさ」として周囲に受け取られることがあります。" },
+        { head: "水が多すぎる：【不安と流転】", body: "思考が深すぎて現実から浮遊しやすく、あれこれと考えすぎて行動が伴わない「流されやすい」性質になります。感情が沈みやすく、精神的に不安定な状況に陥るリスクがあります。" },
+        { head: "木が欠けている：【実行力と若々しさの欠如】", body: "新しいことを始める「発進力」や、困難に立ち向かう向上心が育ちにくいです。体調面では関節や肝臓が弱くなりやすく、常に何かに守られていたいという依存心が出やすくなります。" },
+        { head: "火が欠けている：【情熱と自己表現の欠如】", body: "自分の思いを外に伝えるのが苦手で、控えめで冷めた印象を与えがちです。喜びや感動を表現するエネルギーが不足するため、人生の彩りが乏しく感じられ、無気力になりやすい傾向があります。" },
+        { head: "土が欠けている：【安定感と信用基盤の欠如】", body: "足元が定まらない感覚が強く、生活習慣が乱れたり、信頼関係を築くのに時間がかかったりします。人生の土台となる「一貫性」や「継続力」が不足し、腰を据えて何かに取り組むことが苦手になります。" },
+        { head: "金が欠けている：【けじめと自制心の欠如】", body: "物事を完結させる力や、自分を律する規律が不足しやすくなります。最後までやり遂げるのが苦手で、周囲からの評価や世間体に対する感覚が薄く、約束や期限を守る意識が希薄になることがあります。" },
+        { head: "水が欠けている：【柔軟性と休息の欠如】", body: "物事を潤滑に進める適応力や、冷静に自分を振り返る「休息」が取れなくなります。常に張り詰めた状態が続き、精神的にクールダウンする余裕がないため、感情の摩擦が起きやすくなります。" },
+        { head: "◎ 五行は「調和」が理想", body: "もし一つが欠けている場合は、その要素を持つ色を身につけたり、その性質を持つ方角へ行くなどして、日常的に「気」を補うのが古くからの開運の知恵とされています。" },
+      ]
+    },
+  ];
+
+  function renderKaisetsu() {
+    const box = document.getElementById("kaisetsu-content");
+    if (!box || box.dataset.ready) return;
+    box.innerHTML = KAISETSU_SECTIONS.map(sec => `<div class="card">
+      <h2>${sec.icon} ${escapeHtml(sec.title)}</h2>
+      <div class="hint" style="margin-bottom:10px;">${escapeHtml(sec.intro)}</div>
+      ${sec.items.map(it => `<details class="rc-detail compat-item">
+        <summary>${escapeHtml(it.head)}</summary>
+        <div class="rc-detail-body"><div class="det-row" style="line-height:1.9; white-space:pre-wrap;">${escapeHtml(it.body)}</div></div>
+      </details>`).join("")}
+    </div>`).join("");
+    box.dataset.ready = "1";
+  }
+
   let libraryRendered = false;
 
   function updateAdminUI(email) {
@@ -2396,15 +2524,19 @@
     if (tabBtn) tabBtn.style.display = isAdmin ? "" : "none";
     const compatTab = document.getElementById("tab-compat");
     if (compatTab) compatTab.style.display = isAdmin ? "" : "none";
+    const kaisetsuTab = document.getElementById("tab-kaisetsu");
+    if (kaisetsuTab) kaisetsuTab.style.display = isAdmin ? "" : "none";
     if (isAdmin) {
       if (!libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
       renderCompatGuide();
+      renderKaisetsu();
     } else {
-      // 管理者以外がログインしたら、図書館・相性ガイドを閉じて通常タブへ戻す
+      // 管理者以外がログインしたら、図書館・相性・解説を閉じて通常タブへ戻す
       libraryRendered = false;
       const libPanel = document.getElementById("panel-library");
       const compatPanel = document.getElementById("panel-compat");
-      if ((libPanel && libPanel.classList.contains("active")) || (compatPanel && compatPanel.classList.contains("active"))) switchTab("single");
+      const kaisetsuPanel = document.getElementById("panel-kaisetsu");
+      if ((libPanel && libPanel.classList.contains("active")) || (compatPanel && compatPanel.classList.contains("active")) || (kaisetsuPanel && kaisetsuPanel.classList.contains("active"))) switchTab("single");
     }
   }
 
@@ -2563,8 +2695,9 @@
       const rday = calcRhythm(dayStem, y, m, d).day;
       const col = FIVE_ELEMENT_COLOR[RHYTHM_TO_ELEMENT[rday]] || "#e0e0e0";
       const today = isThisMonth && d === nowd.getDate();
+      const rnum = RHYTHM_NUMBER[rday];
       cells.push(`<div class="rcal-cell ${today ? "today" : ""}" style="border-top:3px solid ${col}">
-        <span class="rcal-d">${d}</span><span class="rcal-r">${escapeHtml(rday)}</span></div>`);
+        <span class="rcal-d">${d}</span><span class="rcal-r">${escapeHtml(rday)}</span>${rnum ? `<span class="rcal-n">${rnum}</span>` : ""}</div>`);
     }
     document.getElementById("rhythm-cal-grid").innerHTML = cells.join("");
   }
@@ -2581,8 +2714,17 @@
     document.addEventListener("click", (e) => {
       const btn = e.target.closest(".rhythm-cal-btn");
       if (btn) openRhythmCalendar(btn.dataset.daystem, btn.dataset.name);
-      // 相性診断ボタン(相性ガイドタブ, 動的生成)
+      // 相性診断ボタン(相性タブ, 動的生成)
       if (e.target.closest("#compat-run")) renderCompatResult();
+      if (e.target.closest("#compat-list-run")) renderCompatList();
+    });
+    // 相性タブ: グループ選択→人セレクトを絞り込み(委譲)
+    document.addEventListener("change", (e) => {
+      const gs = e.target.closest(".compat-grp");
+      if (gs) {
+        const ps = document.getElementById(`compat-${gs.dataset.target}-sel`);
+        if (ps) ps.innerHTML = compatPersonOptions(gs.value);
+      }
     });
     document.getElementById("rhythm-cal-close").addEventListener("click", closeRhythmCalendar);
     document.getElementById("rhythm-modal").addEventListener("click", (e) => {
@@ -2621,6 +2763,7 @@
         if (btn.dataset.tab === "results") renderResults();
         if (btn.dataset.tab === "library") renderLibrary();
         if (btn.dataset.tab === "compat") renderCompatGuide();
+        if (btn.dataset.tab === "kaisetsu") renderKaisetsu();
       });
     });
 
