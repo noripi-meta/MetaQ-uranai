@@ -2240,7 +2240,7 @@
   function honmeiShuku(y,m,d){var lun=solarToLunar(y,m,d);if(!lun)return null;var startShuku=MONTH_START[lun.month];var startIdx=SHUKU_27.indexOf(startShuku);var idx=(startIdx+(lun.day-1))%27;return{shuku:SHUKU_27[idx],shukuIdx:idx,lunar:lun};}
 
   // ISDの実データ15組から確定した「宿差(0-26)→相性コード」。矛盾ゼロ。未確定オフセットはnull。
-  const ISD_OFFSET_CODE = {0:"E",3:"I",6:"J",8:"B",9:"C",10:"D",12:"K",14:"H",15:"N",21:"M",23:"F",24:"L",25:"G",26:"A"};
+  const ISD_OFFSET_CODE = {0:"E",1:"A",3:"I",4:"F",6:"J",8:"B",9:"C",10:"D",11:"G",12:"K",14:"H",15:"N",16:"G",18:"C",19:"B",21:"M",22:"F",23:"F",24:"L",25:"G",26:"A"};
   // 未確定オフセットの「参考」表示用: 伝統宿曜の関係名(近1-8/中10-17/遠19-26 ＋ 命0/業9/胎18)
   const SENJUTSU_REL = ["命","栄","衰","安","危","成","壊","友","親","業","栄","衰","安","危","成","壊","友","親","胎","栄","衰","安","危","成","壊","友","親"];
   function ringLabel(off){ if(off===0||off===9||off===18) return ""; return off<9?"（近）":(off<18?"（中）":"（遠）"); }
