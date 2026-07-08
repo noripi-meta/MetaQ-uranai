@@ -566,6 +566,14 @@
     const sign = rail.sign ? `(${rail.sign})` : "";
     return `<span class="rc-rail" style="background:${bg};color:${textOn(bg)}">レール ${escapeHtml(rail.rail)}${sign}</span>`;
   }
+  // 干支＋干グループ(例: 辛卯 宝石M-)。干グループは日干の五行の色で表示。
+  function kanGroupChipHtml(c) {
+    const dayStemChar = (c.dayGz || "")[0];
+    const bg = FIVE_ELEMENT_COLOR[ELEMENT[dayStemChar]];
+    const gz = `<span class="rc-gz">${escapeHtml(c.bunrui60_gz)}</span>`;
+    if (!bg || !c.bunrui60_kanGroup) return `<span class="rc-gz">${escapeHtml(c.bunrui60_gz)} ${escapeHtml(c.bunrui60_kanGroup || "")}</span>`;
+    return `${gz}<span class="rc-kangroup" style="background:${bg};color:${textOn(bg)}">${escapeHtml(c.bunrui60_kanGroup)}</span>`;
+  }
 
   // パステルカラーパレット（グループの自動色割り当て用）
   const GROUP_COLOR_PALETTE = [
@@ -1110,7 +1118,7 @@
       <div class="rc-groupline">${groupBadge}</div>
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2,"0")}</span>
-        <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
+        ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
       </div>
       <div class="rc-badges">
@@ -2315,7 +2323,7 @@
     const diag = c ? `
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
-        <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
+        ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
       </div>
       <div class="rc-badges">
