@@ -549,12 +549,10 @@
   }
 
   // ---------- 共通の色付き表示ヘルパー ----------
-  // 柱チップ(本質/表面/意思/時柱)を動物の色で表示
+  // 柱チップ(本質/表面/意思/時柱)は三分類(地球=earth/月=moon/太陽=sun)の色で表示
   function animalPillHtml(label, p) {
     if (!p) return `<span class="rc-pill empty"><span class="lbl">${label}</span>—</span>`;
-    const bg = ANIMAL_COLOR[p.animal] || "#d8cfe0";
-    const fg = textOn(bg);
-    return `<span class="rc-pill" style="background:${bg};color:${fg}"><span class="lbl" style="color:${fg}">${label}</span>${escapeHtml(p.animal)}</span>`;
+    return `<span class="rc-pill ${p.group}"><span class="lbl">${label}</span>${escapeHtml(p.animal)}</span>`;
   }
   // 60分類キャラ名を、その動物の色の背景で表示
   function charaChipHtml(charaName) {
