@@ -393,30 +393,31 @@
     "辰": ["戊", "乙", "癸"], "巳": ["丙", "庚", "戊"], "午": ["丁", "己"], "未": ["己", "丁", "乙"],
     "申": ["庚", "壬", "戊"], "酉": ["辛"], "戌": ["戊", "辛", "丁"], "亥": ["壬", "甲"]
   };
-  // 5つの能力軸(自立・表現・人脈・行動・知性)と、対応する通変星2つ
+  // 5つの能力軸。五行(木火土金水)＋陰陽コード(a〜j)に対応(MetaQの表に準拠)。
   const ABILITY_AXES = [
-    { key: "jiritsu", label: "自立", sub: "計画力・独立心", stars: ["比肩", "劫財"] },
-    { key: "hyogen", label: "表現", sub: "想像力・発信力", stars: ["食神", "傷官"] },
-    { key: "jinmyaku", label: "人脈", sub: "交渉力・実行力", stars: ["偏財", "正財"] },
-    { key: "kodo", label: "行動", sub: "統率力・分析力", stars: ["偏官", "正官"] },
-    { key: "chisei", label: "知性", sub: "継続力・指導力", stars: ["偏印", "印綬"] },
+    { key: "jiritsu", label: "自立", sub: "計画力・独立心", element: "木", stars: ["比肩", "劫財"], codes: ["a", "b"] },
+    { key: "hyogen", label: "表現", sub: "想像力・発信力", element: "火", stars: ["食神", "傷官"], codes: ["c", "d"] },
+    { key: "jinmyaku", label: "人脈", sub: "交渉力・実行力", element: "土", stars: ["偏財", "正財"], codes: ["e", "f"] },
+    { key: "kodo", label: "行動", sub: "統率力・分析力", element: "金", stars: ["偏官", "正官"], codes: ["g", "h"] },
+    { key: "chisei", label: "知性", sub: "継続力・指導力", element: "水", stars: ["偏印", "印綬"], codes: ["i", "j"] },
   ];
-  // 命式の天干(年月日時)と全地支の蔵干から通変星を数え、5軸に集計する
+  // 命式の天干(年月日時)と全地支の蔵干から通変星を数え、5軸に集計する。陰(+)と陽(-)は別に数える。
   function calcAbility(dayStem, stems) {
     const counts = {};
     stems.forEach(s => { const t = tsuhenseiFor(dayStem, s); if (t) counts[t] = (counts[t] || 0) + 1; });
-    const axes = ABILITY_AXES.map(ax => ({
-      key: ax.key, label: ax.label, sub: ax.sub,
-      value: (counts[ax.stars[0]] || 0) + (counts[ax.stars[1]] || 0)
-    }));
+    const axes = ABILITY_AXES.map(ax => {
+      const plus = counts[ax.stars[0]] || 0, minus = counts[ax.stars[1]] || 0;
+      return { key: ax.key, label: ax.label, sub: ax.sub, element: ax.element, codes: ax.codes, plus, minus, value: plus + minus };
+    });
     const max = Math.max(1, ...axes.map(a => a.value));
     return { axes, max, counts };
   }
 
   // ---------- リズム（バイオリズム） ----------
+  // MetaQ提供の「五行×陰陽」表に準拠(比肩=活動⑤, 印綬=学習⑥ など)。通変星→リズム名。
   const RHYTHM_NAME = {
-    "比肩": "整理", "劫財": "投資", "食神": "成果", "傷官": "転換", "偏財": "完結",
-    "正財": "調整", "偏官": "焦燥", "正官": "活動", "偏印": "浪費", "印綬": "開墾"
+    "比肩": "活動", "劫財": "浪費", "食神": "調整", "傷官": "焦燥", "偏財": "投資",
+    "正財": "成果", "偏官": "転換", "正官": "完結", "偏印": "整理", "印綬": "学習"
   };
   // ある対象日(ty/tm/td)の年干・月干・日干を求め、本人の日干から見た通変星でリズムを返す
   function calcRhythm(dayStem, ty, tm, td) {
@@ -485,6 +486,9 @@
     if (hourBranch) branchesForZoukan.push(hourBranch);
     branchesForZoukan.forEach(b => (ZOUKAN_ALL[b] || []).forEach(s => abilityStems.push(s)));
     const ability = calcAbility(dayStem, abilityStems);
+    // 五行バランス: 命式の全ての干(天干＋蔵干)を木火土金水に数える
+    const gogyou = { "木": 0, "火": 0, "土": 0, "金": 0, "水": 0 };
+    abilityStems.forEach(s => { const e = ELEMENT[s]; if (e) gogyou[e]++; });
 
     return {
       bunrui60: bunrui60No,            // 1〜60
@@ -502,6 +506,7 @@
       kobaku,
       energy,
       ability,
+      gogyou,
       effYear
     };
   }
@@ -509,6 +514,60 @@
   // ===================================================================
   // アプリ UI ロジック
   // ===================================================================
+
+  // 12動物のカラー(のりぴさん指定)。60分類キャラ・動物チップの背景に使う。
+  const ANIMAL_COLOR = {
+    "ペガサス": "#9b59b6",   // パープル
+    "狼": "#12c2b5",         // ターコイズ
+    "こじか": "#9acd32",     // イエローグリーン
+    "猿": "#f39c12",         // オレンジ
+    "チータ": "#ff5a36",     // レッドオレンジ
+    "黒ひょう": "#f4c724",   // イエロー
+    "ライオン": "#3f51b5",   // インディゴ
+    "虎": "#12a89a",         // ブルーグリーン
+    "たぬき": "#2f8fe0",     // ブルー
+    "子守熊": "#e0459b",     // マゼンタ
+    "ゾウ": "#e53935",       // レッド
+    "ひつじ": "#4caf50",     // グリーン
+  };
+  // 五行のカラー(木火土金水)。レール・能力・五行バランスの色に使う。火＝ピンク等。
+  const FIVE_ELEMENT_COLOR = {
+    "木": "#5cb85c", "火": "#ff8fb3", "土": "#e2a24a", "金": "#9aa7b6", "水": "#5aa9e0"
+  };
+  // 背景色に対して読みやすい文字色(明るい背景は濃い文字、暗い背景は白)を返す
+  function textOn(hex) {
+    const c = String(hex || "").replace("#", "");
+    if (c.length < 6) return "#333";
+    const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b);
+    return lum > 165 ? "#3a2f45" : "#fff";
+  }
+  // キャラ名や動物名に含まれる12動物を見つけて色を返す
+  function animalColorOf(text) {
+    const a = Object.keys(ANIMAL_COLOR).find(name => String(text || "").includes(name));
+    return a ? ANIMAL_COLOR[a] : null;
+  }
+
+  // ---------- 共通の色付き表示ヘルパー ----------
+  // 柱チップ(本質/表面/意思/時柱)を動物の色で表示
+  function animalPillHtml(label, p) {
+    if (!p) return `<span class="rc-pill empty"><span class="lbl">${label}</span>—</span>`;
+    const bg = ANIMAL_COLOR[p.animal] || "#d8cfe0";
+    const fg = textOn(bg);
+    return `<span class="rc-pill" style="background:${bg};color:${fg}"><span class="lbl" style="color:${fg}">${label}</span>${escapeHtml(p.animal)}</span>`;
+  }
+  // 60分類キャラ名を、その動物の色の背景で表示
+  function charaChipHtml(charaName) {
+    const col = animalColorOf(charaName);
+    if (!col) return `<span class="rc-chara">${escapeHtml(charaName)}</span>`;
+    return `<span class="rc-chara chara-color" style="background:${col};color:${textOn(col)}">${escapeHtml(charaName)}</span>`;
+  }
+  // レールを五行の色＋陰陽(+/-)で表示(例: ロマン(-))
+  function railBadgeHtml(rail) {
+    const bg = FIVE_ELEMENT_COLOR[rail.element] || "#f4ecfb";
+    const sign = rail.sign ? `(${rail.sign})` : "";
+    return `<span class="rc-rail" style="background:${bg};color:${textOn(bg)}">レール ${escapeHtml(rail.rail)}${sign}</span>`;
+  }
 
   // パステルカラーパレット（グループの自動色割り当て用）
   const GROUP_COLOR_PALETTE = [
@@ -908,13 +967,40 @@
     if (c.ability) {
       const bars = c.ability.axes.map(a => {
         const pct = Math.round((a.value / c.ability.max) * 100);
+        const col = FIVE_ELEMENT_COLOR[a.element] || "#c6a8ff";
+        // 陰陽の内訳: 例 a+2 / b-1(数がある方だけ)
+        const parts = [];
+        if (a.plus) parts.push(`${a.codes[0]}(+)${a.plus}`);
+        if (a.minus) parts.push(`${a.codes[1]}(−)${a.minus}`);
+        const detail = parts.length ? `<span class="det-bar-codes">${parts.join(" / ")}</span>` : "";
         return `<div class="det-bar-row">
-          <span class="det-bar-label">${a.label}<small>${a.sub}</small></span>
-          <span class="det-bar-track"><span class="det-bar-fill" style="width:${pct}%"></span></span>
+          <span class="det-bar-label"><span class="lbl-line"><span class="det-el-dot" style="background:${col}"></span>${a.label}</span><small>${a.sub}</small></span>
+          <span class="det-bar-track"><span class="det-bar-fill" style="width:${pct}%;background:${col}"></span></span>
           <span class="det-bar-val">${a.value}</span>
+          ${detail}
         </div>`;
       }).join("");
-      body += `<div class="det-sec"><div class="det-h">📊 能力</div>${bars}</div>`;
+      body += `<div class="det-sec"><div class="det-h">📊 能力<span class="det-sub">（五行＋陰陽）</span></div>${bars}</div>`;
+    }
+    if (c.gogyou) {
+      const g = c.gogyou;
+      const gmax = Math.max(1, ...Object.values(g));
+      const gtotal = Object.values(g).reduce((s, v) => s + v, 0) || 1;
+      const order = ["木", "火", "土", "金", "水"];
+      const gbars = order.map(el => {
+        const pct = Math.round((g[el] / gmax) * 100);
+        const col = FIVE_ELEMENT_COLOR[el];
+        return `<div class="det-bar-row">
+          <span class="det-bar-label gogyou-label" style="width:38px"><span class="lbl-line"><span class="det-el-dot" style="background:${col}"></span>${el}</span></span>
+          <span class="det-bar-track"><span class="det-bar-fill" style="width:${pct}%;background:${col}"></span></span>
+          <span class="det-bar-val">${g[el]}</span>
+        </div>`;
+      }).join("");
+      // 偏り(一番多い/一番少ない/無い五行)を一言で
+      const maxEl = order.filter(el => g[el] === gmax);
+      const zeros = order.filter(el => g[el] === 0);
+      const note = `一番強い五行は<b>${maxEl.join("・")}</b>` + (zeros.length ? `／<b>${zeros.join("・")}</b>が無く偏りあり` : "");
+      body += `<div class="det-sec"><div class="det-h">☯️ 五行バランス<span class="det-sub">（命式の木火土金水の偏り）</span></div>${gbars}<div class="det-row" style="margin-top:4px">${note}</div></div>`;
     }
     if (c.dayStem) {
       const r = calcRhythm(c.dayStem, now.getFullYear(), now.getMonth() + 1, now.getDate());
@@ -928,7 +1014,7 @@
       </div>`;
     }
     if (!body) return "";
-    return `<details class="rc-detail"><summary>詳細（空亡・エネルギー・能力・リズム）</summary><div class="rc-detail-body">${body}</div></details>`;
+    return `<details class="rc-detail"><summary>詳細（空亡・エネルギー・能力・五行バランス・リズム）</summary><div class="rc-detail-body">${body}</div></details>`;
   }
 
   let editingResultId = null; // 個別編集中の結果ID
@@ -1011,11 +1097,6 @@
       : [entry.name, entry.note].filter(s => s);
     const displayName = displayNameParts.join("　");
 
-    // 小さな柱チップ(本質/表面/意思/時柱)。動物名だけをグループ色で。
-    const pill = (label, p) => p
-      ? `<span class="rc-pill ${p.group}"><span class="lbl">${label}</span>${escapeHtml(p.animal)}</span>`
-      : `<span class="rc-pill empty"><span class="lbl">${label}</span>—</span>`;
-
     return `
     <div class="result-card compact">
       <div class="rc-head">
@@ -1032,17 +1113,17 @@
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2,"0")}</span>
         <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
-        <span class="rc-chara">${escapeHtml(c.bunrui60_charaName)}</span>
+        ${charaChipHtml(c.bunrui60_charaName)}
       </div>
       <div class="rc-badges">
-        <span class="rc-rail">レール ${escapeHtml(c.rail.rail)}</span>
+        ${railBadgeHtml(c.rail)}
         <span class="rc-fuku">福の神 ${c.fukuNoKami.label}</span>
       </div>
       <div class="rc-pillars">
-        ${pill("本質", c.honshitsu)}
-        ${pill("表面", c.hyomen)}
-        ${pill("意思", c.ishi)}
-        ${pill("時柱", c.jichu)}
+        ${animalPillHtml("本質", c.honshitsu)}
+        ${animalPillHtml("表面", c.hyomen)}
+        ${animalPillHtml("意思", c.ishi)}
+        ${animalPillHtml("時柱", c.jichu)}
       </div>
       ${resultDetailHtml(c)}
     </div>`;
@@ -2162,20 +2243,18 @@
 
   // 図書館のカード(診断結果と同じコンパクトな見た目)。cが無い(生年月日不確か)人は診断を省く。
   function libraryCardHtml(name, dateStr, desc, c) {
-    const pill = (label, p) => p
-      ? `<span class="rc-pill ${p.group}"><span class="lbl">${label}</span>${escapeHtml(p.animal)}</span>` : "";
     const diag = c ? `
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
         <span class="rc-gz">${c.bunrui60_gz} ${c.bunrui60_kanGroup}</span>
-        <span class="rc-chara">${escapeHtml(c.bunrui60_charaName)}</span>
+        ${charaChipHtml(c.bunrui60_charaName)}
       </div>
       <div class="rc-badges">
-        <span class="rc-rail">レール ${escapeHtml(c.rail.rail)}</span>
+        ${railBadgeHtml(c.rail)}
         <span class="rc-fuku">福の神 ${c.fukuNoKami.label}</span>
       </div>
       <div class="rc-pillars">
-        ${pill("本質", c.honshitsu)}${pill("表面", c.hyomen)}${pill("意思", c.ishi)}
+        ${animalPillHtml("本質", c.honshitsu)}${animalPillHtml("表面", c.hyomen)}${animalPillHtml("意思", c.ishi)}
       </div>
       ${resultDetailHtml(c)}`
       : `<div class="hint" style="padding:0 14px 12px;">※生年月日が確定していないため、診断は省略しています。</div>`;
