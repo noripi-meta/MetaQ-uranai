@@ -419,6 +419,11 @@
     "比肩": "活動", "劫財": "浪費", "食神": "調整", "傷官": "焦燥", "偏財": "投資",
     "正財": "成果", "偏官": "転換", "正官": "完結", "偏印": "整理", "印綬": "学習"
   };
+  // リズム名 -> 五行(カレンダーの色分け用)
+  const RHYTHM_TO_ELEMENT = {
+    "活動": "木", "浪費": "木", "調整": "火", "焦燥": "火", "投資": "土",
+    "成果": "土", "転換": "金", "完結": "金", "整理": "水", "学習": "水"
+  };
   // ある対象日(ty/tm/td)の年干・月干・日干を求め、本人の日干から見た通変星でリズムを返す
   function calcRhythm(dayStem, ty, tm, td) {
     const jd = toJulianDay(ty, tm, td, 12);
@@ -950,7 +955,7 @@
 
   // 折りたたみ式の詳細(空亡・エネルギー・能力・リズム)。calc(c)から組み立てる。
   // 年空亡とリズムは「今日」に依存するため、保存せず表示のたびに計算する。
-  function resultDetailHtml(c) {
+  function resultDetailHtml(c, personName) {
     if (!c) return "";
     const now = new Date();
     let body = "";
@@ -1017,10 +1022,11 @@
           <span class="det-chip">月 <b>${escapeHtml(r.month)}</b></span>
           <span class="det-chip">日 <b>${escapeHtml(r.day)}</b></span>
         </div>
+        <button class="rhythm-cal-btn" data-daystem="${escapeHtml(c.dayStem)}" data-name="${escapeHtml(personName || "")}">📅 リズムカレンダーを見る</button>
       </div>`;
     }
     if (!body) return "";
-    return `<details class="rc-detail"><summary>詳細（空亡・エネルギー・能力・五行バランス・リズム）</summary><div class="rc-detail-body">${body}</div></details>`;
+    return `<details class="rc-detail"><summary>詳細</summary><div class="rc-detail-body">${body}</div></details>`;
   }
 
   let editingResultId = null; // 個別編集中の結果ID
@@ -1131,7 +1137,7 @@
         ${animalPillHtml("意思", c.ishi)}
         ${animalPillHtml("時柱", c.jichu)}
       </div>
-      ${resultDetailHtml(c)}
+      ${resultDetailHtml(c, displayName)}
     </div>`;
   }
 
@@ -2333,7 +2339,7 @@
       <div class="rc-pillars">
         ${animalPillHtml("本質", c.honshitsu)}${animalPillHtml("表面", c.hyomen)}${animalPillHtml("意思", c.ishi)}
       </div>
-      ${resultDetailHtml(c)}`
+      ${resultDetailHtml(c, name)}`
       : `<div class="hint" style="padding:0 14px 12px;">※生年月日が確定していないため、診断は省略しています。</div>`;
     return `
     <div class="result-card compact">
@@ -2420,12 +2426,83 @@
   }
 
   // ===================================================================
+  // リズムカレンダー（月ごと・移動・日付ジャンプ）
+  // ===================================================================
+  let rhythmCal = { dayStem: null, name: "", y: 0, m: 0 };
+
+  function openRhythmCalendar(dayStem, name) {
+    if (!dayStem) return;
+    const now = new Date();
+    rhythmCal = { dayStem, name, y: now.getFullYear(), m: now.getMonth() + 1 };
+    document.getElementById("rhythm-modal").style.display = "flex";
+    renderRhythmCalendar();
+  }
+  function closeRhythmCalendar() { document.getElementById("rhythm-modal").style.display = "none"; }
+  function rhythmCalShift(delta) {
+    let y = rhythmCal.y, m = rhythmCal.m + delta;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    rhythmCal.y = y; rhythmCal.m = m; renderRhythmCalendar();
+  }
+  function renderRhythmCalendar() {
+    const { dayStem, name, y, m } = rhythmCal;
+    if (!dayStem) return;
+    document.getElementById("rhythm-cal-name").textContent = name || "この人";
+    document.getElementById("rhythm-cal-title").textContent = `${y}年 ${m}月`;
+    const jy = document.getElementById("rhythm-jump-y"), jm = document.getElementById("rhythm-jump-m");
+    if (jy && document.activeElement !== jy) jy.value = y;
+    if (jm && document.activeElement !== jm) jm.value = m;
+    // 年/月/今日のリズム
+    const ym = calcRhythm(dayStem, y, m, 1);
+    const nowd = new Date();
+    const todayR = calcRhythm(dayStem, nowd.getFullYear(), nowd.getMonth() + 1, nowd.getDate());
+    document.getElementById("rhythm-cal-summary").innerHTML =
+      `<span class="det-chip">${y}年 <b>${escapeHtml(ym.year)}</b></span>
+       <span class="det-chip">${m}月 <b>${escapeHtml(ym.month)}</b></span>
+       <span class="det-chip">今日の日 <b>${escapeHtml(todayR.day)}</b></span>`;
+    // カレンダー本体
+    const firstDow = new Date(y, m - 1, 1).getDay();
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const isThisMonth = (nowd.getFullYear() === y && nowd.getMonth() + 1 === m);
+    const cells = ["日", "月", "火", "水", "木", "金", "土"].map(w => `<div class="rcal-head">${w}</div>`);
+    for (let i = 0; i < firstDow; i++) cells.push(`<div class="rcal-cell empty"></div>`);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const rday = calcRhythm(dayStem, y, m, d).day;
+      const col = FIVE_ELEMENT_COLOR[RHYTHM_TO_ELEMENT[rday]] || "#e0e0e0";
+      const today = isThisMonth && d === nowd.getDate();
+      cells.push(`<div class="rcal-cell ${today ? "today" : ""}" style="border-top:3px solid ${col}">
+        <span class="rcal-d">${d}</span><span class="rcal-r">${escapeHtml(rday)}</span></div>`);
+    }
+    document.getElementById("rhythm-cal-grid").innerHTML = cells.join("");
+  }
+
+  // ===================================================================
   // イベント登録
   // ===================================================================
 
   document.addEventListener("DOMContentLoaded", () => {
     renderResults();
     refreshAllGroupUI();
+
+    // リズムカレンダー: 各カードの「📅」ボタン(動的生成)を委譲で受ける
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".rhythm-cal-btn");
+      if (btn) openRhythmCalendar(btn.dataset.daystem, btn.dataset.name);
+    });
+    document.getElementById("rhythm-cal-close").addEventListener("click", closeRhythmCalendar);
+    document.getElementById("rhythm-modal").addEventListener("click", (e) => {
+      if (e.target.id === "rhythm-modal") closeRhythmCalendar();
+    });
+    document.getElementById("rhythm-prev").addEventListener("click", () => rhythmCalShift(-1));
+    document.getElementById("rhythm-next").addEventListener("click", () => rhythmCalShift(1));
+    document.getElementById("rhythm-today").addEventListener("click", () => {
+      const now = new Date(); rhythmCal.y = now.getFullYear(); rhythmCal.m = now.getMonth() + 1; renderRhythmCalendar();
+    });
+    document.getElementById("rhythm-jump").addEventListener("click", () => {
+      const yy = parseInt(document.getElementById("rhythm-jump-y").value, 10);
+      const mm = parseInt(document.getElementById("rhythm-jump-m").value, 10);
+      if (yy >= 1 && yy <= 9999 && mm >= 1 && mm <= 12) { rhythmCal.y = yy; rhythmCal.m = mm; renderRhythmCalendar(); }
+      else showToast("年・月を正しく入力してください");
+    });
 
     // 生年月日・時刻入力: フォーカスが外れたら統一表記に自動整形する
     const singleDateInput = document.getElementById("single-date");
