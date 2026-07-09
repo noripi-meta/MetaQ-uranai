@@ -195,9 +195,11 @@
 
   // ---------- 年柱（立春基準） ----------
   function findLichunDate(y) {
+    // 月柱の節入り判定(正午基準)と同じ基準で立春日を探す。
+    // 深夜0時基準だと立春が午前に来る年に年の切替が1日遅れ、月柱とズレる。
     for (let i = 0; i < 6; i++) {
       const dt = new Date(y, 1, 2 + i); // 2/2始まりで探索
-      const jd = toJulianDay(dt.getFullYear(), dt.getMonth() + 1, dt.getDate(), 0);
+      const jd = toJulianDay(dt.getFullYear(), dt.getMonth() + 1, dt.getDate(), 12);
       const lon = sunLongitude(jd);
       if (lon >= 315) return dt;
     }
@@ -3962,12 +3964,28 @@
     if (jy && document.activeElement !== jy) jy.value = y;
     if (jm && document.activeElement !== jm) jm.value = m;
     // 年/月/今日のリズム
-    const ym = calcRhythm(dayStem, y, m, 1);
+    // 月リズムは節入り(毎月4〜8日頃)、年リズムは立春で切り替わるため、
+    // 月の途中で変わる場合は「1日〜: A ／ 節入り日〜: B」の形で両方見せる。
+    const daysInM = new Date(y, m, 0).getDate();
+    const first = calcRhythm(dayStem, y, m, 1);
+    let mSwitch = null, ySwitch = null;
+    for (let dd = 2; dd <= daysInM; dd++) {
+      const r = calcRhythm(dayStem, y, m, dd);
+      if (!mSwitch && r.month !== first.month) mSwitch = { d: dd, v: r.month };
+      if (!ySwitch && r.year !== first.year) ySwitch = { d: dd, v: r.year };
+      if (mSwitch && ySwitch) break;
+    }
+    const yearChip = ySwitch
+      ? `${y}年 <b>${escapeHtml(first.year)}</b> → ${m}/${ySwitch.d}〜 <b>${escapeHtml(ySwitch.v)}</b>`
+      : `${y}年 <b>${escapeHtml(first.year)}</b>`;
+    const monthChip = mSwitch
+      ? `${m}月 <b>${escapeHtml(first.month)}</b> → ${m}/${mSwitch.d}〜 <b>${escapeHtml(mSwitch.v)}</b>`
+      : `${m}月 <b>${escapeHtml(first.month)}</b>`;
     const nowd = new Date();
     const todayR = calcRhythm(dayStem, nowd.getFullYear(), nowd.getMonth() + 1, nowd.getDate());
     document.getElementById("rhythm-cal-summary").innerHTML =
-      `<span class="det-chip">${y}年 <b>${escapeHtml(ym.year)}</b></span>
-       <span class="det-chip">${m}月 <b>${escapeHtml(ym.month)}</b></span>
+      `<span class="det-chip">${yearChip}</span>
+       <span class="det-chip">${monthChip}</span>
        <span class="det-chip">今日の日 <b>${escapeHtml(todayR.day)}</b></span>`;
     // カレンダー本体
     const firstDow = new Date(y, m - 1, 1).getDay();
