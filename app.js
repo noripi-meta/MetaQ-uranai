@@ -734,7 +734,7 @@
     const c = r.calc || {};
     const gnames = resultGroupIds(r).map(id => { const g = getGroupById(id); return g ? g.name : ""; });
     const parts = [
-      r.sei, r.mei, r.name, r.note, r.birthDate, r.birthTime,
+      r.sei, r.mei, r.name, r.nickname, r.note, r.birthDate, r.birthTime,
       ...gnames,
       c.bunrui60 != null ? "no." + c.bunrui60 : "", c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
       c.rail && c.rail.rail, c.rail && c.rail.tsuhensei,
@@ -1065,7 +1065,7 @@
 
   // 個別の診断結果の 名前・生年月日・時刻・備考 を編集して保存する。
   // 生年月日/時刻が変わると命式を計算し直す。
-  async function editResult(id, name, dateStr, timeStr, note, groupIds) {
+  async function editResult(id, name, dateStr, timeStr, note, groupIds, nickname) {
     const r = results.find(x => x.id === id);
     if (!r) return false;
     const date = parseFlexibleDate(dateStr);
@@ -1081,6 +1081,7 @@
       ...r,
       name: name || "（名前未入力）",
       sei: "", mei: "",
+      nickname: (nickname !== undefined ? nickname : (r.nickname || "")) || "",
       note: note || "",
       groupIds: (groupIds || []).filter(Boolean),
       birthDate: `${date.y}/${pad(date.m)}/${pad(date.d)}`,
@@ -1117,6 +1118,7 @@
         <div class="result-head"><div><div class="name">✎ 編集中</div></div></div>
         <div class="edit-form">
           <div class="field"><label>名前</label><input type="text" class="edit-name" value="${escapeHtml(editName)}" placeholder="名前"></div>
+          <div class="field"><label>ニックネーム（任意・検索にも使えます）</label><input type="text" class="edit-nickname" value="${escapeHtml(entry.nickname || "")}" placeholder="あだ名・旧姓など"></div>
           <div class="field"><label>生年月日</label><input type="text" class="edit-date" value="${escapeHtml(entry.birthDate || "")}" placeholder="1990/06/24"></div>
           <div class="field"><label>時刻（任意・空欄OK）</label><input type="text" class="edit-time" value="${escapeHtml(entry.birthTime || "")}" placeholder="14:30"></div>
           <div class="field"><label>備考（任意）</label><input type="text" class="edit-note" value="${escapeHtml(entry.note || "")}" placeholder="メモ"></div>
@@ -1145,7 +1147,7 @@
     <div class="result-card compact">
       <div class="rc-head">
         <div class="rc-name-wrap">
-          <span class="rc-name">${escapeHtml(displayName)}</span>
+          <span class="rc-name">${escapeHtml(displayName)}</span>${entry.nickname ? `<span class="rc-nick">（${escapeHtml(entry.nickname)}）</span>` : ""}
           <span class="rc-birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</span>
         </div>
         <div class="head-btns">
@@ -1228,6 +1230,7 @@
       const f = list.querySelector(".edit-form");
       editDraft = {
         name: f.querySelector(".edit-name").value,
+        nickname: f.querySelector(".edit-nickname").value,
         date: f.querySelector(".edit-date").value,
         time: f.querySelector(".edit-time").value,
         note: f.querySelector(".edit-note").value,
@@ -1241,6 +1244,7 @@
     if (editDraft && list.querySelector(".edit-form")) {
       const f = list.querySelector(".edit-form");
       f.querySelector(".edit-name").value = editDraft.name;
+      f.querySelector(".edit-nickname").value = editDraft.nickname || "";
       f.querySelector(".edit-date").value = editDraft.date;
       f.querySelector(".edit-time").value = editDraft.time;
       f.querySelector(".edit-note").value = editDraft.note;
@@ -1267,13 +1271,14 @@
       btn.addEventListener("click", async () => {
         const card = btn.closest(".result-card");
         const name = card.querySelector(".edit-name").value.trim();
+        const nickname = card.querySelector(".edit-nickname").value.trim();
         const dateStr = card.querySelector(".edit-date").value;
         const timeStr = card.querySelector(".edit-time").value;
         const note = card.querySelector(".edit-note").value.trim();
         const groupIds = [...card.querySelectorAll(".edit-group:checked")].map(cb => cb.value);
         if (!parseFlexibleDate(dateStr)) { showToast("生年月日を正しい形式で入力してください（例：1990/06/24）"); return; }
         editingResultId = null;
-        const ok = await editResult(btn.dataset.id, name, dateStr, timeStr, note, groupIds);
+        const ok = await editResult(btn.dataset.id, name, dateStr, timeStr, note, groupIds, nickname);
         if (ok) showToast("編集を保存しました");
       });
     });
