@@ -484,6 +484,10 @@
   .abil-bar-fill{ display:block; height:100%; border-radius:999px; }
   .abil-bar-val{ width:16px; text-align:right; font-weight:800; color:var(--ink); }
   .lib-note{ font-size:12px; line-height:1.8; color:var(--ink-soft); background:#faf6fe; border-left:3px solid var(--lavender); border-radius:8px; padding:9px 12px; margin-bottom:12px; }
+  .lib-agg-details{ margin-top:18px; }
+  .lib-agg-details>summary{ cursor:pointer; list-style:none; font-weight:700; font-size:14px; color:var(--plum); background:#f4ecfb; border-radius:10px; padding:12px 14px; user-select:none; }
+  .lib-agg-details>summary::-webkit-details-marker{ display:none; }
+  .lib-agg-details[open]>summary{ border-bottom-left-radius:0; border-bottom-right-radius:0; }
   .shuku-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:8px; }
   .shuku-cell{
     background:#fdfaff; border:1.5px solid #f0e3f6; border-radius:var(--radius-sm);
@@ -1293,12 +1297,14 @@
       <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前や「何をした人か」で検索（例：物理、画家、ノーベル）">
       <div class="group-select-chip" id="library-genre-chips" style="margin-top:10px;"></div>
     </div>
-    <div class="card agg-group-select">
-      <h2>📊 ジャンル別に集計</h2>
-      <select id="library-agg-genre"></select>
-    </div>
-    <div id="library-agg"></div>
     <div id="library-content"></div>
+    <details class="lib-agg-details">
+      <summary>📊 ジャンル別に集計する（クリックで開く）</summary>
+      <div class="card agg-group-select" style="margin-top:10px;">
+        <select id="library-agg-genre"></select>
+      </div>
+      <div id="library-agg"></div>
+    </details>
   </div>
 
   <!-- 相性ガイド（管理者のみ） -->
