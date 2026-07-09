@@ -1478,7 +1478,16 @@
   }
 
   // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
-  const RESULT_HEADERS = ["性","名","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+  const RESULT_HEADERS = ["性","名","ニックネーム","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+  // 色付けに使う列位置は列名から求める(列を増減してもズレないように)
+  const COL = {
+    group: RESULT_HEADERS.indexOf("グループ名"),
+    rail: RESULT_HEADERS.indexOf("レール"),
+    honshitsu: RESULT_HEADERS.indexOf("本質グループ"),
+    hyomen: RESULT_HEADERS.indexOf("表面グループ"),
+    ishi: RESULT_HEADERS.indexOf("意思グループ"),
+    jichu: RESULT_HEADERS.indexOf("時柱(動物)")
+  };
 
   function resultToRow(r) {
     const c = r.calc;
@@ -1486,7 +1495,7 @@
     const seiOut = r.sei || r.name || "";
     const meiOut = r.mei || "";
     return [
-      seiOut, meiOut, r.note || "", gnames.length ? gnames.join("・") : "（未設定）", r.birthDate, r.birthTime,
+      seiOut, meiOut, r.nickname || "", r.note || "", gnames.length ? gnames.join("・") : "（未設定）", r.birthDate, r.birthTime,
       c.rail.rail, c.rail.tsuhensei,
       c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
       c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
@@ -1578,13 +1587,13 @@
     const bg = Array(RESULT_HEADERS.length).fill(base);
     const g = getGroupById(resultGroupIds(r)[0]);
     const gc = sheetColor || (g && g.color);
-    if (gc) bg[3] = safeColor(gc);                            // グループ名
+    if (gc) bg[COL.group] = safeColor(gc);
     const railColor = RAIL_COLOR[c.rail.rail];
-    if (railColor) { bg[6] = railColor; bg[7] = railColor; }  // レール
-    bg[16] = bg[17] = PIE_COLORS[c.honshitsu.group];          // 本質
-    bg[19] = bg[20] = PIE_COLORS[c.hyomen.group];             // 表面
-    bg[22] = bg[23] = PIE_COLORS[c.ishi.group];               // 意思
-    if (c.jichu) bg[25] = PIE_COLORS[c.jichu.group];          // 時柱
+    if (railColor) { bg[COL.rail] = railColor; bg[COL.rail + 1] = railColor; }
+    bg[COL.honshitsu] = bg[COL.honshitsu + 1] = PIE_COLORS[c.honshitsu.group];
+    bg[COL.hyomen] = bg[COL.hyomen + 1] = PIE_COLORS[c.hyomen.group];
+    bg[COL.ishi] = bg[COL.ishi + 1] = PIE_COLORS[c.ishi.group];
+    if (c.jichu) bg[COL.jichu] = PIE_COLORS[c.jichu.group];
     return bg;
   }
 
@@ -2915,7 +2924,7 @@
     { genre: "フォーブス日本2026", name: "多田 勝美", date: "1945/07/11", desc: "26位 大東建託｜アパート建築・管理大手・大東建託の創業者。" },
     { genre: "フォーブス日本2026", name: "襟川 陽一・恵子", date: "", desc: "27位 コーエーテクモHD｜「信長の野望」などを生んだゲーム業界の名物夫妻。" },
     { genre: "フォーブス日本2026", name: "福嶋 康博", date: "1947/08/18", desc: "28位 スクウェア・エニックス｜旧エニックス創業者。「ドラゴンクエスト」の生みの親。" },
-    { genre: "フォーブス日本2026", name: "宇野 正晃", date: "", desc: "29位 コスモス薬品｜九州発「ドラッグコスモス」を全国展開。" },
+    { genre: "フォーブス日本2026", name: "宇野 正晃", date: "1947/05/18", desc: "29位 コスモス薬品｜九州発「ドラッグコスモス」を全国展開。" },
     { genre: "フォーブス日本2026", name: "石原崇匡（一族）", date: "1978/07/26", desc: "30位 平和｜パチンコ・パチスロ大手「平和」の創業者一族。" },
     { genre: "フォーブス日本2025", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜ユニクロの海外展開が絶好調で日本首位を維持。" },
     { genre: "フォーブス日本2025", name: "孫正義", date: "1957/08/11", desc: "2位 ソフトバンクグループ｜4年ぶりの最終黒字。AI半導体・データセンターへ投資加速。" },
@@ -2941,7 +2950,7 @@
     { genre: "フォーブス日本2025", name: "多田勝美", date: "1945/07/12", desc: "22位 大東建託｜賃貸住宅の管理・仲介で圧倒的シェアを構築。" },
     { genre: "フォーブス日本2025", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "23位 アパグループ｜駅前に高密度なビジネスホテルをドミナント展開。" },
     { genre: "フォーブス日本2025", name: "福嶋康博", date: "1947/08/18", desc: "24位 スクウェア・エニックス｜旧エニックス創業者。ドラクエの基盤を作った人物。" },
-    { genre: "フォーブス日本2025", name: "宇野正晃", date: "", desc: "25位 コスモス薬品｜小商圏型メガドラッグストア戦略で躍進。" },
+    { genre: "フォーブス日本2025", name: "宇野正晃", date: "1947/05/18", desc: "25位 コスモス薬品｜小商圏型メガドラッグストア戦略で躍進。" },
     { genre: "フォーブス日本2025", name: "石原崇匡（一族）", date: "1978/07/26", desc: "26位 平和｜パチンコ機大手。ゴルフ場（PGM）も傘下に持つ。" },
     { genre: "フォーブス日本2025", name: "荒井正昭", date: "1965/12/17", desc: "27位 オープンハウスグループ｜狭小地を活用したリーズナブルな戸建で急成長。" },
     { genre: "フォーブス日本2025", name: "金沢一家", date: "", desc: "28位 三洋物産｜「海物語」シリーズなどメガヒット機種を持つメーカー。" },
@@ -2971,7 +2980,7 @@
     { genre: "フォーブス日本2024", name: "内山庄三郎（一族）", date: "", desc: "22位 レーザーテック｜EUVマスク検査装置を独占製造。" },
     { genre: "フォーブス日本2024", name: "森佳子（一族）", date: "1940/07/13", desc: "23位 森ビル｜「アークヒルズ」「六本木ヒルズ」等の都市開発を手掛ける。" },
     { genre: "フォーブス日本2024", name: "福嶋康博", date: "1947/08/18", desc: "24位 スクウェア・エニックス｜旧エニックスを創業し「ドラゴンクエスト」を発信。" },
-    { genre: "フォーブス日本2024", name: "宇野正晃", date: "", desc: "25位 コスモス薬品｜調剤を強みとした小商圏型の格安ドラッグストア。" },
+    { genre: "フォーブス日本2024", name: "宇野正晃", date: "1947/05/18", desc: "25位 コスモス薬品｜調剤を強みとした小商圏型の格安ドラッグストア。" },
     { genre: "フォーブス日本2024", name: "荒井正昭", date: "1965/12/17", desc: "26位 オープンハウスグループ｜都心の狭小地を活用した戸建住宅で急成長。" },
     { genre: "フォーブス日本2024", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "27位 アパグループ｜一代で「APAホテル」の巨大ネットワークを構築。" },
     { genre: "フォーブス日本2024", name: "石原崇匡（一族）", date: "1978/07/26", desc: "28位 平和｜パチンコ機器開発およびゴルフ場（PGM）の運営。" },
@@ -2997,7 +3006,7 @@
     { genre: "フォーブス日本2023", name: "永守重信", date: "1944/08/28", desc: "18位 ニデック（日本電産）｜車載・産業用モーターを狙った積極経営。" },
     { genre: "フォーブス日本2023", name: "多田勝美", date: "1945/07/12", desc: "19位 大東建託｜土地活用スキームでアパマン建築・管理の王座を維持。" },
     { genre: "フォーブス日本2023", name: "福嶋康博", date: "1947/08/18", desc: "20位 スクウェア・エニックス｜旧エニックス創業者。ドラクエ等の強力なIPを保有。" },
-    { genre: "フォーブス日本2023", name: "宇野正晃", date: "", desc: "21位 コスモス薬品｜「フード＆ドラッグ」戦略で業界トップクラスの効率。" },
+    { genre: "フォーブス日本2023", name: "宇野正晃", date: "1947/05/18", desc: "21位 コスモス薬品｜「フード＆ドラッグ」戦略で業界トップクラスの効率。" },
     { genre: "フォーブス日本2023", name: "島野容三", date: "", desc: "22位 シマノ｜自転車ブーム後も高いシェアを誇る自転車部品大手。" },
     { genre: "フォーブス日本2023", name: "内山庄三郎（一族）", date: "", desc: "23位 レーザーテック｜最先端半導体向け検査装置が世界で絶賛され資産高騰。" },
     { genre: "フォーブス日本2023", name: "森佳子（一族）", date: "1940/07/13", desc: "24位 森ビル｜2023年開業の「麻布台ヒルズ」など大規模再開発を推進。" },
@@ -3025,7 +3034,7 @@
     { genre: "フォーブス日本2022", name: "上月景正", date: "1940/11/12", desc: "16位 コナミグループ｜人気ゲームIPやカードゲームの世界的ヒット。" },
     { genre: "フォーブス日本2022", name: "多田勝美", date: "1945/07/12", desc: "17位 大東建託｜建築から一括管理までパッケージ化した不動産モデル。" },
     { genre: "フォーブス日本2022", name: "福嶋康博", date: "1947/08/18", desc: "18位 スクウェア・エニックス｜旧エニックス創業者。ドラクエの強いライセンス収入。" },
-    { genre: "フォーブス日本2022", name: "宇野正晃", date: "", desc: "19位 コスモス薬品｜食品をフックにした独自のドラッグストア包囲網。" },
+    { genre: "フォーブス日本2022", name: "宇野正晃", date: "1947/05/18", desc: "19位 コスモス薬品｜食品をフックにした独自のドラッグストア包囲網。" },
     { genre: "フォーブス日本2022", name: "島野容三", date: "", desc: "20位 シマノ｜自転車ブームの恩恵を最大級に受ける。" },
     { genre: "フォーブス日本2022", name: "襟川陽一・恵子", date: "", desc: "21位 コーエーテクモHD｜歴史ゲームと恵子氏の資産運用のハイブリッド。" },
     { genre: "フォーブス日本2022", name: "石原崇匡（一族）", date: "1978/07/26", desc: "22位 平和｜パチンコ機の製造とゴルフ場PGMの運営。" },
@@ -3057,7 +3066,7 @@
     { genre: "フォーブス日本2021", name: "上月景正", date: "1940/11/12", desc: "18位 コナミグループ｜『桃太郎電鉄』のヒットや巣ごもりのゲーム需要増。" },
     { genre: "フォーブス日本2021", name: "多田勝美", date: "1945/07/12", desc: "19位 大東建託｜賃貸住宅の建築請負と一括管理の安定収益。" },
     { genre: "フォーブス日本2021", name: "福嶋康博", date: "1947/08/18", desc: "20位 スクウェア・エニックス｜エニックス創業者として保有株式が上昇。" },
-    { genre: "フォーブス日本2021", name: "宇野正晃", date: "", desc: "21位 コスモス薬品｜「安い食品」で客を呼ぶ郊外型の巨大ドラッグ戦略。" },
+    { genre: "フォーブス日本2021", name: "宇野正晃", date: "1947/05/18", desc: "21位 コスモス薬品｜「安い食品」で客を呼ぶ郊外型の巨大ドラッグ戦略。" },
     { genre: "フォーブス日本2021", name: "島野容三", date: "", desc: "22位 シマノ｜密を避ける移動・スポーツとしての自転車ブームで成長。" },
     { genre: "フォーブス日本2021", name: "鈴木敏文", date: "1932/12/01", desc: "23位 セブン＆アイHD｜セブン-イレブンを日本に定着させた流通の神様。" },
     { genre: "フォーブス日本2021", name: "杉浦広一", date: "1950/07/22", desc: "24位 スギHD｜調剤併設で高齢化社会に密着した安定ビジネス。" },
@@ -3088,7 +3097,7 @@
     { genre: "フォーブス日本2020", name: "多田勝美", date: "1945/07/12", desc: "19位 大東建託｜賃貸住宅の建築・管理。サブリースで安定。" },
     { genre: "フォーブス日本2020", name: "福嶋康博", date: "1947/08/18", desc: "20位 スクウェア・エニックス｜旧エニックス創業者。ゲームブームで保有株が高評価。" },
     { genre: "フォーブス日本2020", name: "森佳子（一族）", date: "1940/07/13", desc: "21位 森ビル｜故・森稔氏の遺族。六本木ヒルズ等の都市開発資産。" },
-    { genre: "フォーブス日本2020", name: "宇野正晃", date: "", desc: "22位 コスモス薬品｜自粛中の食品・日用品買い出しで急成長。" },
+    { genre: "フォーブス日本2020", name: "宇野正晃", date: "1947/05/18", desc: "22位 コスモス薬品｜自粛中の食品・日用品買い出しで急成長。" },
     { genre: "フォーブス日本2020", name: "鈴木敏文", date: "1932/12/01", desc: "23位 セブン＆アイHD｜日本にコンビニ文化を根付かせた元トップ。" },
     { genre: "フォーブス日本2020", name: "杉浦広一", date: "1950/07/22", desc: "24位 スギHD｜スギ薬局。調剤とマスク・衛生用品特需で堅調。" },
     { genre: "フォーブス日本2020", name: "土屋嘉雄（一族）", date: "1932/05/18", desc: "25位 ワークマン／カインズ｜「ワークマンプラス」のブームで初のトップ30入り。" },
@@ -3789,7 +3798,11 @@
   }
 
   // 図書館のカード(診断結果と同じコンパクトな見た目)。cが無い(生年月日不確か)人は診断を省く。
-  function libraryCardHtml(name, dateStr, desc, c) {
+  function libraryCardHtml(name, dateStr, desc, c, lazyIdx) {
+    // 詳細(重いHTML)は開いた時に生成する(1200人分を毎回作るとレンダリングが数秒かかるため)
+    const detail = (lazyIdx !== undefined)
+      ? `<details class="rc-detail lib-lazy" data-lidx="${lazyIdx}"><summary>詳細</summary><div class="rc-detail-body"></div></details>`
+      : resultDetailHtml(c, name);
     const diag = c ? `
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
@@ -3803,7 +3816,7 @@
       <div class="rc-pillars">
         ${animalPillHtml("本質", c.honshitsu)}${animalPillHtml("表面", c.hyomen)}${animalPillHtml("意思", c.ishi)}
       </div>
-      ${resultDetailHtml(c, name)}`
+      ${detail}`
       : `<div class="hint" style="padding:0 14px 12px;">※生年月日が確定していないため、診断は省略しています。</div>`;
     return `
     <div class="result-card compact">
@@ -3819,6 +3832,16 @@
   }
 
   let libraryGenreFilter = "all"; // 図書館のジャンル絞り込み
+  // 図書館の四柱計算キャッシュ(同じ生年月日は1回だけ計算する)
+  const libCalcCache = new Map();
+  function libCalc(dateStr) {
+    if (!libCalcCache.has(dateStr)) {
+      const d = libDateParts(dateStr);
+      libCalcCache.set(dateStr, d ? calcFourPillars(d.y, d.m, d.d, null, null) : null);
+    }
+    return libCalcCache.get(dateStr);
+  }
+  let libraryMatchedRef = []; // 遅延詳細の参照先(表示中の人物)
 
   // ジャンル絞り込みチップ(すべて/各ジャンル)を描く
   function renderLibraryGenreChips() {
@@ -3855,6 +3878,7 @@
   function renderLibrary() {
     const container = document.getElementById("library-content");
     if (!container) return;
+    libraryMatchedRef = [];
     renderLibraryGenreChips();
     const term = (document.getElementById("library-search")?.value || "").trim().toLowerCase();
     let matched = LIBRARY_PEOPLE.filter(p => libraryGenreFilter === "all" || p.genre === libraryGenreFilter);
@@ -3877,9 +3901,9 @@
         html += `<div class="lib-note">📝 ${escapeHtml(FORBES_NOTES[ym[1]])}</div>`;
       }
       byGenre[genre].forEach(p => {
-        const d = libDateParts(p.date);
-        const c = d ? calcFourPillars(d.y, d.m, d.d, null, null) : null;
-        html += libraryCardHtml(p.name, p.date, p.desc, c);
+        const c = libCalc(p.date);
+        const idx = libraryMatchedRef.push({ name: p.name, calc: c }) - 1;
+        html += libraryCardHtml(p.name, p.date, p.desc, c, idx);
       });
       html += `</div>`;
     });
@@ -3902,7 +3926,7 @@
     if (!box) return;
     if (!genre) { box.innerHTML = ""; return; }
     const members = LIBRARY_PEOPLE.filter(p => p.genre === genre)
-      .map(p => { const d = libDateParts(p.date); return d ? { calc: calcFourPillars(d.y, d.m, d.d, null, null) } : null; })
+      .map(p => { const c = libCalc(p.date); return c ? { calc: c } : null; })
       .filter(Boolean);
     if (members.length === 0) {
       box.innerHTML = `<div class="empty-state"><div class="emoji">🌙</div><p>このジャンルには集計できる（生年月日が確定した）人物がいません。</p></div>`;
@@ -4029,9 +4053,25 @@
       });
     });
 
-    // 図書館 - 検索
+    // 図書館 - 検索(入力が落ち着いてから描画する。1200人分の連続再描画を防ぐ)
     const librarySearch = document.getElementById("library-search");
-    if (librarySearch) librarySearch.addEventListener("input", () => renderLibrary());
+    let libSearchTimer = null;
+    if (librarySearch) librarySearch.addEventListener("input", () => {
+      clearTimeout(libSearchTimer);
+      libSearchTimer = setTimeout(() => renderLibrary(), 180);
+    });
+    // 図書館 - 詳細の遅延生成(「詳細」を開いた時に初めて中身を作る)
+    const libContent = document.getElementById("library-content");
+    if (libContent) libContent.addEventListener("click", (e) => {
+      const det = e.target.closest("details.lib-lazy");
+      if (!det || det.dataset.filled) return;
+      const ref = libraryMatchedRef[+det.dataset.lidx];
+      if (!ref) return;
+      det.dataset.filled = "1";
+      const inner = resultDetailHtml(ref.calc, ref.name);
+      const m = inner.match(/<div class="rc-detail-body">([\s\S]*)<\/div><\/details>$/);
+      det.querySelector(".rc-detail-body").innerHTML = m ? m[1] : inner;
+    });
     // 図書館 - ジャンル別集計
     renderLibraryGenreSelect();
     const libraryAggGenre = document.getElementById("library-agg-genre");
@@ -4149,7 +4189,11 @@
 
     // 診断結果 - グループフィルター
     document.getElementById("results-group-filter").addEventListener("change", renderResults);
-    document.getElementById("results-search").addEventListener("input", renderResults);
+    let resSearchTimer = null;
+    document.getElementById("results-search").addEventListener("input", () => {
+      clearTimeout(resSearchTimer);
+      resSearchTimer = setTimeout(renderResults, 150);
+    });
 
     // CSV出力・全削除
     document.getElementById("export-csv-btn").addEventListener("click", exportCsv);
