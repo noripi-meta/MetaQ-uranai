@@ -401,6 +401,20 @@
     { key: "kodo", label: "行動", sub: "統率力・分析力", element: "金", stars: ["偏官", "正官"], codes: ["g", "h"] },
     { key: "chisei", label: "知性", sub: "継続力・指導力", element: "水", stars: ["偏印", "印綬"], codes: ["i", "j"] },
   ];
+  // ISDの10能力(通変星→コードa〜j・能力名・五行)。第一/第二能力の表示に使う。
+  const ABILITY_10 = [
+    { code: "a", name: "実行力", star: "比肩", element: "木" },
+    { code: "b", name: "計画力", star: "劫財", element: "木" },
+    { code: "c", name: "判断力", star: "食神", element: "火" },
+    { code: "d", name: "表現力", star: "傷官", element: "火" },
+    { code: "e", name: "包容力", star: "偏財", element: "土" },
+    { code: "f", name: "計数力", star: "正財", element: "土" },
+    { code: "g", name: "対話力", star: "偏官", element: "金" },
+    { code: "h", name: "分析力", star: "正官", element: "金" },
+    { code: "i", name: "応用力", star: "偏印", element: "水" },
+    { code: "j", name: "吸収力", star: "印綬", element: "水" },
+  ];
+
   // 命式の天干(年月日時)と全地支の蔵干から通変星を数え、5軸に集計する。陰(+)と陽(-)は別に数える。
   function calcAbility(dayStem, stems) {
     const counts = {};
@@ -982,22 +996,34 @@
       </div>`;
     }
     if (c.ability) {
-      const bars = c.ability.axes.map(a => {
-        const pct = Math.round((a.value / c.ability.max) * 100);
-        const col = FIVE_ELEMENT_COLOR[a.element] || "#c6a8ff";
-        // 陰陽の内訳: 例 a+2 / b-1(数がある方だけ)
-        const parts = [];
-        if (a.plus) parts.push(`${a.codes[0]}(+)${a.plus}`);
-        if (a.minus) parts.push(`${a.codes[1]}(−)${a.minus}`);
-        const detail = parts.length ? `<span class="det-bar-codes">${parts.join(" / ")}</span>` : "";
-        return `<div class="det-bar-row">
-          <span class="det-bar-label"><span class="lbl-line"><span class="det-el-dot" style="background:${col}"></span>${a.label}</span><small>${a.sub}</small></span>
-          <span class="det-bar-track"><span class="det-bar-fill" style="width:${pct}%;background:${col}"></span></span>
-          <span class="det-bar-val">${a.value}</span>
-          ${detail}
+      // 10能力(a〜j)の値を通変星カウントから作り、多い順に並べる
+      const items = ABILITY_10.map(ab => ({
+        ...ab, value: (c.ability.counts && c.ability.counts[ab.star]) || 0
+      }));
+      const ranked = [...items].sort((x, y) => y.value - x.value);
+      const max = Math.max(1, ...items.map(i => i.value));
+      const first = ranked[0], second = ranked[1];
+      const topCard = (rank, ab) => {
+        const col = FIVE_ELEMENT_COLOR[ab.element] || "#c6a8ff";
+        return `<div class="abil-top">
+          <div class="abil-top-rank">${rank}</div>
+          <div class="abil-top-body"><span class="abil-top-code" style="background:${col};color:${textOn(col)}">${ab.code}</span><b>${ab.name}</b></div>
+        </div>`;
+      };
+      // 10能力の数値バー(a〜j順)。第一/第二はマーク付き
+      const bars = items.map(ab => {
+        const col = FIVE_ELEMENT_COLOR[ab.element] || "#c6a8ff";
+        const pct = Math.round((ab.value / max) * 100);
+        const mark = ab.code === first.code ? " ①" : ab.code === second.code ? " ②" : "";
+        return `<div class="abil-bar-row${mark ? " hot" : ""}">
+          <span class="abil-bar-label"><span class="abil-code" style="background:${col};color:${textOn(col)}">${ab.code}</span>${ab.name}${mark}</span>
+          <span class="abil-bar-track"><span class="abil-bar-fill" style="width:${pct}%;background:${col}"></span></span>
+          <span class="abil-bar-val">${ab.value}</span>
         </div>`;
       }).join("");
-      body += `<div class="det-sec"><div class="det-h">📊 能力<span class="det-sub">（五行＋陰陽）</span></div>${bars}</div>`;
+      body += `<div class="det-sec"><div class="det-h">📊 能力<span class="det-sub">（強い順）</span></div>
+        <div class="abil-tops">${topCard("第一能力", first)}${topCard("第二能力", second)}</div>
+        <div class="abil-bars">${bars}</div></div>`;
     }
     if (c.gogyou) {
       const g = c.gogyou;
