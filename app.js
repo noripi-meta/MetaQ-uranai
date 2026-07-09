@@ -456,9 +456,21 @@
   }
 
   // ---------- 統合計算 ----------
+  // 個性心理学の四柱推命では23:00が1日の区切り(23:00〜翌22:59が1日)。
+  // 23時台生まれは翌日の日付として四柱全体を計算する(のりぴさん確定仕様 2026-07-09)。
+  function nextCalendarDay(y, m, d) {
+    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    d++;
+    if (d > dim[m - 1]) { d = 1; m++; }
+    if (m > 12) { m = 1; y++; }
+    return { y, m, d };
+  }
+
   function calcFourPillars(y, m, d, h, mi) {
     h = (h === undefined || h === null || isNaN(h)) ? null : h;
     mi = (mi === undefined || mi === null || isNaN(mi)) ? 0 : mi;
+    if (h === 23) { const nd = nextCalendarDay(y, m, d); y = nd.y; m = nd.m; d = nd.d; }
 
     const di = dayIndex(y, m, d);
     const dayStem = JIKKAN[di % 10];
