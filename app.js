@@ -3449,6 +3449,40 @@
 
   let libraryRendered = false;
 
+  // アクセス許可リストの読み込み(管理者UI)
+  let accessLoaded = false;
+  async function loadAccessConfig() {
+    const fs = window.metaqFirestore;
+    if (!fs || !fs.getAccessConfig) return;
+    const en = document.getElementById("access-enabled");
+    const ta = document.getElementById("access-emails");
+    if (!en || !ta) return;
+    try {
+      const cfg = await fs.getAccessConfig();
+      en.checked = cfg.mode === "allowlist";
+      ta.value = (cfg.emails || []).join("\n");
+    } catch (e) { console.error(e); }
+    if (!accessLoaded) {
+      accessLoaded = true;
+      const save = document.getElementById("access-save");
+      if (save) save.addEventListener("click", async () => {
+        const status = document.getElementById("access-status");
+        const emails = ta.value.split("\n").map(s => s.trim()).filter(Boolean);
+        const mode = en.checked ? "allowlist" : "open";
+        if (mode === "allowlist" && emails.length === 0 &&
+          !confirm("許可リストが空のまま有効にすると、あなた（管理者）以外は誰もログインできなくなります。よろしいですか？")) return;
+        if (status) status.textContent = "保存中...";
+        try {
+          await fs.saveAccessConfig({ mode, emails });
+          if (status) status.textContent = mode === "allowlist"
+            ? `✅ 保存しました。今後は許可リストの${emails.length}人（＋あなた）だけがログインできます。`
+            : "✅ 保存しました。現在は誰でもログインできる「開放」状態です。";
+          showToast("アクセス設定を保存しました");
+        } catch (e) { console.error(e); if (status) status.textContent = "保存に失敗しました。"; }
+      });
+    }
+  }
+
   function updateAdminUI(email) {
     const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
     const tabBtn = document.getElementById("tab-library");
@@ -3457,10 +3491,13 @@
     if (compatTab) compatTab.style.display = isAdmin ? "" : "none";
     const kaisetsuTab = document.getElementById("tab-kaisetsu");
     if (kaisetsuTab) kaisetsuTab.style.display = isAdmin ? "" : "none";
+    const accessCard = document.getElementById("access-mgr-card");
+    if (accessCard) accessCard.style.display = isAdmin ? "" : "none";
     if (isAdmin) {
       if (!libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
       renderCompatGuide();
       renderKaisetsu();
+      loadAccessConfig();
     } else {
       // 管理者以外がログインしたら、図書館・相性・解説を閉じて通常タブへ戻す
       libraryRendered = false;

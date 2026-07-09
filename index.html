@@ -412,6 +412,10 @@
   .compat-rank-medal{ font-size:18px; }
   .compat-rank-name{ font-size:12px; font-weight:700; color:var(--ink-soft); font-style:italic; }
   .compat-rank-tag{ margin-top:4px; font-size:11.5px; font-weight:800; color:var(--pink-deep); }
+  /* アクセス管理 */
+  .access-toggle{ display:flex; align-items:center; gap:8px; font-size:14px; font-weight:800; color:var(--ink); margin-bottom:10px; cursor:pointer; }
+  .access-toggle input{ width:18px; height:18px; }
+  #access-emails{ width:100%; box-sizing:border-box; min-height:96px; padding:10px 12px; border:1.5px solid #e6dcef; border-radius:10px; font-size:14px; line-height:1.7; color:var(--ink); resize:vertical; }
   /* 解説メニュー */
   .kaisetsu-menu{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
   .kaisetsu-menu-btn{
@@ -1242,6 +1246,14 @@
     <div class="card">
       <h2>📂 グループ一覧</h2>
       <div class="group-list" id="group-list"></div>
+    </div>
+    <div class="card" id="access-mgr-card" style="display:none;">
+      <h2>🔐 アプリを使える人の管理</h2>
+      <div class="hint" style="margin-bottom:8px;">「許可リスト」をオンにすると、下に登録したGoogleアカウントの人だけがログインできます。（管理者のあなたは常に使えます）</div>
+      <label class="access-toggle"><input type="checkbox" id="access-enabled"> 許可リストを有効にする</label>
+      <textarea id="access-emails" placeholder="1行に1つ、許可するGoogleのメールアドレスを入力&#10;例：&#10;friend@gmail.com&#10;staff@example.com"></textarea>
+      <button id="access-save" class="compat-run-btn" style="margin-top:8px;">保存する</button>
+      <div id="access-status" class="hint" style="margin-top:8px;"></div>
     </div>
     <div class="card">
       <h2>📗 スプレッドシート連携</h2>

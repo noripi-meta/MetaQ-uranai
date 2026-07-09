@@ -17,6 +17,7 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   onSnapshot,
@@ -95,9 +96,37 @@ function friendlyErrorMessage(err) {
   return "ログインに失敗しました。もう一度お試しください。";
 }
 
+// ---------- アクセス許可リスト ----------
+// 管理者(orn.pomme)は常に許可(締め出し防止)。それ以外は config/access で制御。
+// 既定は「開放」(誰でも可)。安全側: 読み取り失敗時も締め出さない。
+const ADMIN_EMAIL = "orn.pomme@gmail.com";
+async function checkAccessAllowed(user) {
+  const email = (user.email || "").toLowerCase();
+  if (email === ADMIN_EMAIL) return true;
+  try {
+    const snap = await getDoc(doc(db, "config", "access"));
+    if (!snap.exists()) return true;
+    const d = snap.data() || {};
+    if (d.mode !== "allowlist") return true;
+    const list = (d.emails || []).map(e => String(e).toLowerCase().trim());
+    return list.includes(email);
+  } catch (e) {
+    console.error("access check failed (fail-open):", e);
+    return true;
+  }
+}
+
 // ---------- 認証状態の監視 ----------
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
+    const allowed = await checkAccessAllowed(user);
+    if (!allowed) {
+      const em = user.email || "";
+      await signOut(auth);
+      showLoginScreen();
+      setLoginMessage(`このアカウント（${em}）はまだ利用が許可されていません。管理者にご連絡ください。`);
+      return;
+    }
     currentUser = user;
     clearRedirectInProgressFlag();
     showAppScreen(user);
@@ -284,6 +313,22 @@ async function saveSettings(partial) {
   await setDoc(settingsDoc(currentUser.uid), partial, { merge: true });
 }
 
+// アクセス許可リストの取得(管理者UI用)
+async function getAccessConfig() {
+  try {
+    const snap = await getDoc(doc(db, "config", "access"));
+    return snap.exists() ? (snap.data() || {}) : { mode: "open", emails: [] };
+  } catch (e) { console.error(e); return { mode: "open", emails: [] }; }
+}
+// アクセス許可リストの保存(管理者のみ。ルールで書き込みを制限)
+async function saveAccessConfig(cfg) {
+  await setDoc(doc(db, "config", "access"), {
+    mode: cfg.mode === "allowlist" ? "allowlist" : "open",
+    emails: Array.isArray(cfg.emails) ? cfg.emails.map(e => String(e).toLowerCase().trim()).filter(Boolean) : [],
+    updatedAt: Date.now()
+  });
+}
+
 // app.js からアクセスできるようグローバルに公開
 window.metaqFirestore = {
   saveResult,
@@ -292,5 +337,7 @@ window.metaqFirestore = {
   saveGroup,
   deleteGroup,
   saveSettings,
+  getAccessConfig,
+  saveAccessConfig,
   getCurrentUser: () => currentUser
 };
