@@ -329,6 +329,20 @@ async function saveAccessConfig(cfg) {
   });
 }
 
+// 図書館の追加人物(共有doc config/library)。読み=ログイン済み全員、書き=管理者のみ(ルールで制限)
+async function getLibraryConfig() {
+  try {
+    const snap = await getDoc(doc(db, "config", "library"));
+    return snap.exists() ? ((snap.data() || {}).people || []) : [];
+  } catch (e) { console.error(e); return []; }
+}
+async function saveLibraryConfig(people) {
+  await setDoc(doc(db, "config", "library"), {
+    people: Array.isArray(people) ? people : [],
+    updatedAt: Date.now()
+  });
+}
+
 // app.js からアクセスできるようグローバルに公開
 window.metaqFirestore = {
   saveResult,
@@ -339,5 +353,7 @@ window.metaqFirestore = {
   saveSettings,
   getAccessConfig,
   saveAccessConfig,
+  getLibraryConfig,
+  saveLibraryConfig,
   getCurrentUser: () => currentUser
 };

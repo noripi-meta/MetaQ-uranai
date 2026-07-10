@@ -506,6 +506,10 @@
   .abil-bar-fill{ display:block; height:100%; border-radius:999px; }
   .abil-bar-val{ width:16px; text-align:right; font-weight:800; color:var(--ink); }
   .lib-note{ font-size:12px; line-height:1.8; color:var(--ink-soft); background:#faf6fe; border-left:3px solid var(--lavender); border-radius:8px; padding:9px 12px; margin-bottom:12px; }
+  .lib-add-details{ margin-bottom:14px; }
+  .lib-add-details>summary{ cursor:pointer; list-style:none; font-weight:700; font-size:13px; color:#4a8c5c; background:#e9f7ee; border-radius:10px; padding:11px 14px; user-select:none; }
+  .lib-add-details>summary::-webkit-details-marker{ display:none; }
+  .lib-custom-tag{ display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; background:#e9f7ee; color:#4a8c5c; font-size:9.5px; font-weight:800; vertical-align:middle; }
   .lib-mode-tabs{ display:flex; gap:8px; margin:4px 0 14px; }
   .lib-mode-btn{ flex:1; cursor:pointer; font-weight:700; font-size:14px; color:var(--ink-soft); background:#f2eef7; border:1.5px solid transparent; border-radius:12px; padding:11px 10px; user-select:none; transition:all .15s; }
   .lib-mode-btn.active{ color:var(--ink); background:var(--lavender-deep); border-color:var(--lavender-deep); box-shadow:0 3px 10px rgba(189,163,255,.4); }
@@ -1320,9 +1324,22 @@
     </div>
     <div id="lib-view-list">
       <div class="card" style="padding:14px;">
-        <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前や「何をした人か」で検索（例：物理、画家、ノーベル）">
+        <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前・解説・柱（例：本質ライオン、意思胎）で検索">
         <div class="group-select-chip" id="library-genre-chips" style="margin-top:10px;"></div>
       </div>
+      <details class="lib-add-details">
+        <summary>➕ 図書館に人物を追加する</summary>
+        <div class="card" style="margin-top:10px;">
+          <div class="field"><label>名前</label><input type="text" id="lib-add-name" placeholder="例：レオナルド・ダ・ヴィンチ"></div>
+          <div class="row2">
+            <div class="field"><label>生年月日</label><input type="text" id="lib-add-date" placeholder="1990/06/24"></div>
+            <div class="field"><label>ジャンル</label><input type="text" id="lib-add-genre" list="lib-genre-list" placeholder="例：芸術"><datalist id="lib-genre-list"></datalist></div>
+          </div>
+          <div class="field"><label>何をした人か（任意）</label><input type="text" id="lib-add-desc" placeholder="例：モナリザを描いた万能の天才"></div>
+          <button class="btn-primary" id="lib-add-submit">図書館に追加する</button>
+          <div class="hint" id="lib-add-status">追加した人はこの端末だけでなく、次回からずっと図書館に表示されます。「追加分」タグの人は×ボタンで削除できます。</div>
+        </div>
+      </details>
       <div id="library-content"></div>
     </div>
     <div id="lib-view-agg" style="display:none;">
