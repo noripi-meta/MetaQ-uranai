@@ -4116,7 +4116,7 @@
       renderCompatGuide();
       renderKaisetsu();
       loadAccessConfig();
-    loadLibraryExtra();
+      loadLibraryExtra();
     } else {
       // 管理者以外がログインしたら、図書館・相性・解説を閉じて通常タブへ戻す
       libraryRendered = false;
