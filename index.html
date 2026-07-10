@@ -366,6 +366,15 @@
   .rc-detail > summary::before{ content:"▸ "; }
   .rc-detail[open] > summary::before{ content:"▾ "; }
   .rc-detail-body{ padding:2px 14px 14px; }
+  /* 解説ページ: 前提・考え方(青系) */
+  .kai-info{ background:#eef4fd; border-radius:10px; border-top:none; margin:8px 0; }
+  .kai-info > summary{ color:#5b79c9; }
+  /* 解説ページ: グループ(開くと中の項目が出る) */
+  .kai-group{ background:#fdeef6; border-radius:10px; border-top:none; margin:8px 0; }
+  .kai-group > summary{ color:#c2588f; font-size:12.5px; padding:12px 14px; }
+  .kai-count{ display:inline-block; margin-left:6px; padding:1px 8px; border-radius:999px; background:#fff; font-size:10px; color:#c2588f; }
+  .kai-children .rc-detail{ background:#fff; border-radius:8px; margin:6px 0; border-top:none; box-shadow:0 1px 3px rgba(120,80,140,.08); }
+  .kai-children .kai-info{ background:#eef4fd; }
   .det-sec{ margin-bottom:12px; }
   .det-h{ font-size:12px; font-weight:800; color:var(--ink); margin-bottom:5px; }
   .det-row{ font-size:12px; color:var(--ink-soft); line-height:1.7; }
