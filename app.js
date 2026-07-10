@@ -4361,7 +4361,9 @@
     const monthChip = mSwitch
       ? `${m}月 <b>${escapeHtml(first.month)}</b> → ${m}/${mSwitch.d}〜 <b>${escapeHtml(mSwitch.v)}</b>`
       : `${m}月 <b>${escapeHtml(first.month)}</b>`;
+    // 個性心理学では23:00が1日の区切りなので、23時以降は翌日を「今日」として扱う(ISDねっとと同じ挙動)
     const nowd = new Date();
+    if (nowd.getHours() >= 23) nowd.setDate(nowd.getDate() + 1);
     const todayR = calcRhythm(dayStem, nowd.getFullYear(), nowd.getMonth() + 1, nowd.getDate());
     document.getElementById("rhythm-cal-summary").innerHTML =
       `<span class="det-chip">${yearChip}</span>
