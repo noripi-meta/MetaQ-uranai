@@ -1059,9 +1059,6 @@
         <div class="det-row">🎭 表裏：${escapeHtml(st.omoteura)}</div>
         <div class="det-row">💬 決めゼリフ：「${escapeHtml(st.serifu)}」</div>
         <div class="det-row">👤 日干の特徴：${escapeHtml(st.tokucho)}</div>
-        <details class="rc-detail" style="margin-top:6px;"><summary>なぜ「${escapeHtml(st.code)}」になるの？</summary>
-          <div class="rc-detail-body"><div class="det-row" style="line-height:1.9;">${escapeHtml(st.naze)}<br>くわしくは📖読み方ガイドの「🎭タイプの仕組み」へ。</div></div>
-        </details>
       </div>`;
     }
     if (c.gogyou) {
