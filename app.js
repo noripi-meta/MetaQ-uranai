@@ -999,7 +999,7 @@
 
   // 折りたたみ式の詳細(空亡・エネルギー・能力・リズム)。calc(c)から組み立てる。
   // 年空亡とリズムは「今日」に依存するため、保存せず表示のたびに計算する。
-  function resultDetailHtml(c, personName) {
+  function resultDetailHtml(c, personName, showLibJump) {
     if (!c) return "";
     const now = new Date();
     let body = "";
@@ -1093,7 +1093,7 @@
         <button class="rhythm-cal-btn" data-daystem="${escapeHtml(c.dayStem)}" data-name="${escapeHtml(personName || "")}">📅 リズムカレンダーを見る</button>
       </div>`;
     }
-    if (c.honshitsu && c.honshitsu.animal) {
+    if (showLibJump && c.honshitsu && c.honshitsu.animal) {
       const code60 = (c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1]) ? SIXTY_TYPES[c.bunrui60 - 1].code : "";
       body += `<div class="det-sec">
         <div class="det-h">📚 同じ星の有名人をさがす</div>
@@ -4629,7 +4629,7 @@
     // 詳細(重いHTML)は開いた時に生成する(1200人分を毎回作るとレンダリングが数秒かかるため)
     const detail = (lazyIdx !== undefined)
       ? `<details class="rc-detail lib-lazy" data-lidx="${lazyIdx}"><summary>詳細</summary><div class="rc-detail-body"></div></details>`
-      : resultDetailHtml(c, name);
+      : resultDetailHtml(c, name, true);
     const diag = c ? `
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
@@ -5023,7 +5023,7 @@
       const ref = libraryMatchedRef[+det.dataset.lidx];
       if (!ref) return;
       det.dataset.filled = "1";
-      const inner = resultDetailHtml(ref.calc, ref.name);
+      const inner = resultDetailHtml(ref.calc, ref.name, true);
       const m = inner.match(/<div class="rc-detail-body">([\s\S]*)<\/div><\/details>$/);
       det.querySelector(".rc-detail-body").innerHTML = m ? m[1] : inner;
     });
