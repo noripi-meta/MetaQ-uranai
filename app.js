@@ -1190,7 +1190,7 @@
           <span class="rc-birth">${entry.birthDate}${entry.birthTime ? " " + entry.birthTime : ""}</span>
         </div>
         <div class="head-btns">
-          <button class="pin-btn${(appSettings && appSettings.selfResultId === entry.id) ? " pinned" : ""}" data-id="${entry.id}" title="自分として一番上に固定">${(appSettings && appSettings.selfResultId === entry.id) ? "⭐" : "☆"}</button>
+          <button class="pin-btn${getPinnedIds().includes(entry.id) ? " pinned" : ""}" data-id="${entry.id}" title="ピン留めして上に固定（最大5人）">${getPinnedIds().includes(entry.id) ? "⭐" : "☆"}</button>
           <button class="redit-btn" data-id="${entry.id}" title="編集">✎</button>
           <button class="del-btn" data-id="${entry.id}" title="削除">×</button>
         </div>
@@ -1235,6 +1235,13 @@
     if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }
 
+  // ピン留めID一覧(最大5人)。旧設定selfResultId(単一)も自動で引き継ぐ
+  const MAX_PINS = 5;
+  function getPinnedIds() {
+    if (appSettings && Array.isArray(appSettings.pinnedIds)) return appSettings.pinnedIds;
+    return (appSettings && appSettings.selfResultId) ? [appSettings.selfResultId] : [];
+  }
+
   function renderResults() {
     const list = document.getElementById("results-list");
     const actions = document.getElementById("results-actions");
@@ -1246,11 +1253,11 @@
     if (filterVal === "none") filtered = results.filter(r => resultGroupIds(r).length === 0);
     else if (filterVal !== "all") filtered = results.filter(r => resultGroupIds(r).includes(filterVal));
     if (term) filtered = filtered.filter(r => resultSearchText(r).includes(term));
-    // ⭐で「自分」に設定した人を常に一番上へ
-    const selfId = appSettings && appSettings.selfResultId;
-    if (selfId) {
-      const i = filtered.findIndex(r => r.id === selfId);
-      if (i > 0) filtered = [filtered[i], ...filtered.slice(0, i), ...filtered.slice(i + 1)];
+    // ⭐でピン留めした人(最大5人)を常に上へ(ピンした順)
+    const pinned = getPinnedIds();
+    if (pinned.length) {
+      const top = pinned.map(id => filtered.find(r => r.id === id)).filter(Boolean);
+      if (top.length) filtered = [...top, ...filtered.filter(r => !pinned.includes(r.id))];
     }
 
     if (results.length === 0) {
@@ -1308,19 +1315,26 @@
     list.querySelectorAll(".redit-btn").forEach(btn => {
       btn.addEventListener("click", () => { editingResultId = btn.dataset.id; renderResults(); });
     });
-    // ⭐: 自分として固定/解除(設定はFirestoreに保存され、どの端末でも同じ)
+    // ⭐: ピン留め/解除(最大5人・設定はFirestoreに保存され、どの端末でも同じ)
     list.querySelectorAll(".pin-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.dataset.id;
-        const newSelf = (appSettings.selfResultId === id) ? null : id;
-        appSettings = { ...appSettings, selfResultId: newSelf };
+        const cur = getPinnedIds();
+        let next;
+        if (cur.includes(id)) {
+          next = cur.filter(x => x !== id);
+        } else {
+          if (cur.length >= MAX_PINS) { showToast(`ピン留めは${MAX_PINS}人までです（⭐を1つ外してください）`); return; }
+          next = [...cur, id];
+        }
+        appSettings = { ...appSettings, pinnedIds: next };
         renderResults();
         const fs = getFS();
         if (fs && fs.saveSettings) {
-          try { await fs.saveSettings({ selfResultId: newSelf }); }
+          try { await fs.saveSettings({ pinnedIds: next }); }
           catch (e) { console.error(e); showToast("設定の保存に失敗しました"); }
         }
-        showToast(newSelf ? "一番上に固定しました" : "固定を解除しました");
+        showToast(cur.includes(id) ? "ピン留めを外しました" : `ピン留めしました（${next.length}/${MAX_PINS}人）`);
       });
     });
     // 編集: キャンセル
