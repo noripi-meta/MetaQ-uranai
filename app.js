@@ -1093,6 +1093,18 @@
         <button class="rhythm-cal-btn" data-daystem="${escapeHtml(c.dayStem)}" data-name="${escapeHtml(personName || "")}">📅 リズムカレンダーを見る</button>
       </div>`;
     }
+    if (c.honshitsu && c.honshitsu.animal) {
+      const code60 = (c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1]) ? SIXTY_TYPES[c.bunrui60 - 1].code : "";
+      body += `<div class="det-sec">
+        <div class="det-h">📚 同じ星の有名人をさがす</div>
+        <div class="group-select-chip lib-jump-row">
+          <span class="chip lib-jump" data-q="本質${escapeHtml(c.honshitsu.animal)}">本質が${escapeHtml(c.honshitsu.animal)}</span>
+          ${c.honshitsu.juniun ? `<span class="chip lib-jump" data-q="本質${escapeHtml(c.honshitsu.juniun)}">十二運が${escapeHtml(c.honshitsu.juniun)}</span>` : ""}
+          ${code60 ? `<span class="chip lib-jump" data-q="${escapeHtml(code60)}">60タイプが${escapeHtml(code60)}</span>` : ""}
+        </div>
+        <div class="hint" style="margin-top:4px;">タップすると図書館で同じ星の有名人を検索します。</div>
+      </div>`;
+    }
     if (!body) return "";
     return `<details class="rc-detail"><summary>詳細</summary><div class="rc-detail-body">${body}</div></details>`;
   }
@@ -3456,6 +3468,54 @@
     { genre: "芸能・エンタメ", name: "マツコ・デラックス", date: "1972/10/26", desc: "コラムニスト・タレント。" },
     { genre: "科学・発明", name: "苫米地英人", date: "1959/09/07", desc: "認知科学者・実業家。" },
     { genre: "文学", name: "本田健", date: "1967/08/23", desc: "『ユダヤ人大富豪の教え』などの作家。" },
+    { genre: "金脈・ブランディング", name: "中居正広", date: "1972/08/18", desc: "元SMAPの国民的司会者。金脈解説・長生の有名人例。" },
+    { genre: "金脈・ブランディング", name: "黒柳徹子", date: "1933/08/09", desc: "『徹子の部屋』の司会者・女優。金脈解説・長生の例。" },
+    { genre: "金脈・ブランディング", name: "佐藤健", date: "1989/03/21", desc: "俳優（るろうに剣心など）。金脈解説・長生の例。" },
+    { genre: "金脈・ブランディング", name: "深田恭子", date: "1982/11/02", desc: "女優。金脈解説・養の例。" },
+    { genre: "金脈・ブランディング", name: "森泉", date: "1982/10/18", desc: "モデル・タレント。金脈解説・養の例。" },
+    { genre: "金脈・ブランディング", name: "DJ社長", date: "1992/08/29", desc: "Repezen Foxx（レペゼン地球）のリーダー。金脈解説・沐浴の例。" },
+    { genre: "金脈・ブランディング", name: "フワちゃん", date: "1993/11/26", desc: "YouTuber・タレント。金脈解説・建禄の例。" },
+    { genre: "金脈・ブランディング", name: "小倉優子", date: "1983/11/01", desc: "タレント。金脈解説・帝旺の例。" },
+    { genre: "金脈・ブランディング", name: "指原莉乃", date: "1992/11/21", desc: "元HKT48・アイドルプロデューサー。金脈解説・帝旺の例。" },
+    { genre: "金脈・ブランディング", name: "ジャニー喜多川", date: "1931/10/23", desc: "ジャニーズ事務所創業者。金脈解説・衰の例。" },
+    { genre: "金脈・ブランディング", name: "中田敦彦", date: "1982/09/27", desc: "オリエンタルラジオ・YouTube大学。金脈解説・衰の例。" },
+    { genre: "金脈・ブランディング", name: "椎名林檎", date: "1978/11/25", desc: "シンガーソングライター・東京事変。金脈解説・病の例。" },
+    { genre: "金脈・ブランディング", name: "松本潤", date: "1983/08/30", desc: "嵐の元メンバー・俳優。金脈解説・病の例。" },
+    { genre: "金脈・ブランディング", name: "有吉弘行", date: "1974/05/31", desc: "お笑いタレント・司会者。金脈解説・病の例。" },
+    { genre: "金脈・ブランディング", name: "HIKAKIN", date: "1989/04/21", desc: "日本のトップYouTuber。金脈解説・死の例（月柱は墓）。" },
+    { genre: "金脈・ブランディング", name: "庵野秀明", date: "1960/05/22", desc: "エヴァンゲリオンの監督。金脈解説・死の例。" },
+    { genre: "金脈・ブランディング", name: "オノ・ヨーコ", date: "1933/02/18", desc: "前衛芸術家・ジョン・レノンの妻。金脈解説・絶の例。" },
+    { genre: "音楽", name: "JUJU", date: "1976/02/14", desc: "歌手。『やさしさで溢れるように』など。" },
+    { genre: "金脈・ブランディング", name: "ふくれな", date: "1999/09/24", desc: "美容系YouTuber。金脈解説・病の例。" },
+    { genre: "金脈・ブランディング", name: "happyちゃん", date: "1983/09/04", desc: "引き寄せ・意識系で人気のインフルエンサー。金脈解説・死の例（講座資料の生年月日）。" },
+    { genre: "金脈・ブランディング", name: "riregram", date: "1989/07/08", desc: "インスタグラマー。金脈解説・帝旺の例（講座資料の生年月日）。" },
+    { genre: "お笑い芸人", name: "松本人志", date: "1963/09/08", desc: "ダウンタウン。お笑い界のカリスマ。" },
+    { genre: "お笑い芸人", name: "浜田雅功", date: "1963/05/11", desc: "ダウンタウン。ツッコミの帝王。" },
+    { genre: "お笑い芸人", name: "大悟", date: "1980/03/25", desc: "千鳥。岡山の破天荒ボケ。" },
+    { genre: "お笑い芸人", name: "ノブ", date: "1979/12/30", desc: "千鳥。「クセがスゴい」ツッコミ。" },
+    { genre: "お笑い芸人", name: "バカリズム", date: "1975/11/28", desc: "芸人・脚本家。独自のフリップ芸。" },
+    { genre: "お笑い芸人", name: "渡辺直美", date: "1987/10/23", desc: "世界で活躍するお笑いタレント。" },
+    { genre: "お笑い芸人", name: "出川哲朗", date: "1964/02/13", desc: "リアクション芸の第一人者。" },
+    { genre: "お笑い芸人", name: "江頭2:50", date: "1965/07/01", desc: "伝説の体当たり芸人。エガちゃんねる。" },
+    { genre: "お笑い芸人", name: "若林正恭", date: "1978/09/20", desc: "オードリー。エッセイストとしても人気。" },
+    { genre: "お笑い芸人", name: "春日俊彰", date: "1979/02/09", desc: "オードリー。トゥース！" },
+    { genre: "YouTuber", name: "はじめしゃちょー", date: "1993/02/14", desc: "登録者数日本トップクラスのYouTuber。" },
+    { genre: "YouTuber", name: "伊沢拓司", date: "1994/05/16", desc: "QuizKnock・東大クイズ王。" },
+    { genre: "インフルエンサー", name: "みちょぱ（池田美優）", date: "1998/10/30", desc: "モデル・タレント。" },
+    { genre: "インフルエンサー", name: "藤田ニコル", date: "1998/02/20", desc: "モデル・タレント。" },
+    { genre: "インフルエンサー", name: "ゆうこす（菅本裕子）", date: "1994/05/20", desc: "モテクリエイター・実業家。" },
+    { genre: "キャバ嬢", name: "門りょう", date: "1989/10/15", desc: "元北新地No.1「アルマンド姉さん」。実業家。" },
+    { genre: "キャバ嬢", name: "エンリケ（小川えり）", date: "1987/11/02", desc: "元名古屋No.1キャバ嬢。タレント・実業家。" },
+    { genre: "偉人", name: "伊達政宗", date: "1567/09/05", desc: "独眼竜。仙台藩初代藩主。" },
+    { genre: "偉人", name: "近藤勇", date: "1834/11/09", desc: "新選組局長。" },
+    { genre: "偉人", name: "高杉晋作", date: "1839/09/27", desc: "長州藩の風雲児。奇兵隊を創設。" },
+    { genre: "偉人", name: "吉田松陰", date: "1830/09/20", desc: "松下村塾で維新の志士を育てた教育者。" },
+    { genre: "占い・スピリチュアル", name: "ゲッターズ飯田", date: "1975/04/04", desc: "五星三心占い。芸能界最強の占い師。" },
+    { genre: "占い・スピリチュアル", name: "江原啓之", date: "1964/12/22", desc: "スピリチュアルカウンセラーの第一人者。" },
+    { genre: "占い・スピリチュアル", name: "鏡リュウジ", date: "1968/03/02", desc: "心理占星術の第一人者。" },
+    { genre: "占い・スピリチュアル", name: "島田秀平", date: "1977/12/05", desc: "手相芸人・占い師。" },
+    { genre: "占い・スピリチュアル", name: "Dr.コパ", date: "1947/05/05", desc: "風水の第一人者・小林祥晃。" },
+    { genre: "占い・スピリチュアル", name: "木下レオン", date: "1975/08/12", desc: "『突然ですが占ってもいいですか？』の帝王占術占い師。" },
   ];
 
   // ===== 宿曜 命宿エンジン（senjutsu.jp の精密旧暦テーブルを移植・1900〜2099） =====
@@ -4634,6 +4694,21 @@
     return allLibraryPeople().find(p => norm(p.name) === n && p.date === date) || null;
   }
 
+  // 「同じ星の有名人」チップ → 図書館タブに切り替えて検索
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".lib-jump");
+    if (!b) return;
+    const q = b.dataset.q || "";
+    const tabBtn = document.querySelector('[data-tab="library"]');
+    if (tabBtn) tabBtn.click();
+    libraryGenreFilter = "all";
+    const inp = document.getElementById("library-search");
+    if (inp) inp.value = q;
+    if (!libraryRendered) { renderLibraryGenreSelect(); libraryRendered = true; }
+    renderLibrary();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
   // ジャンル絞り込みチップ(すべて/各ジャンル)を描く
   function renderLibraryGenreChips() {
     const box = document.getElementById("library-genre-chips");
@@ -4679,6 +4754,11 @@
       if (/^(本質|表面|意思|時柱)/.test(term)) {
         const c = libCalc(p.date);
         if (c && pillarSearchTokens(c).some(tk => tk.toLowerCase().includes(term))) return true;
+      }
+      // 60タイプコード検索(9P・12cなど)
+      if (/^([1-9]|1[0-2])[casmp]$/.test(term)) {
+        const c = libCalc(p.date);
+        if (c && c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1] && SIXTY_TYPES[c.bunrui60 - 1].code.toLowerCase() === term) return true;
       }
       return false;
     });
