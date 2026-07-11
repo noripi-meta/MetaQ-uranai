@@ -999,7 +999,7 @@
 
   // 折りたたみ式の詳細(空亡・エネルギー・能力・リズム)。calc(c)から組み立てる。
   // 年空亡とリズムは「今日」に依存するため、保存せず表示のたびに計算する。
-  function resultDetailHtml(c, personName, showLibJump) {
+  function resultDetailHtml(c, personName) {
     if (!c) return "";
     const now = new Date();
     let body = "";
@@ -1091,18 +1091,6 @@
           <span class="det-chip">日 <b>${escapeHtml(r.day)}</b></span>
         </div>
         <button class="rhythm-cal-btn" data-daystem="${escapeHtml(c.dayStem)}" data-name="${escapeHtml(personName || "")}">📅 リズムカレンダーを見る</button>
-      </div>`;
-    }
-    if (showLibJump && c.honshitsu && c.honshitsu.animal) {
-      const code60 = (c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1]) ? SIXTY_TYPES[c.bunrui60 - 1].code : "";
-      body += `<div class="det-sec">
-        <div class="det-h">📚 同じ星の有名人をさがす</div>
-        <div class="group-select-chip lib-jump-row">
-          <span class="chip lib-jump" data-q="本質${escapeHtml(c.honshitsu.animal)}">本質が${escapeHtml(c.honshitsu.animal)}</span>
-          ${c.honshitsu.juniun ? `<span class="chip lib-jump" data-q="本質${escapeHtml(c.honshitsu.juniun)}">十二運が${escapeHtml(c.honshitsu.juniun)}</span>` : ""}
-          ${code60 ? `<span class="chip lib-jump" data-q="${escapeHtml(code60)}">60タイプが${escapeHtml(code60)}</span>` : ""}
-        </div>
-        <div class="hint" style="margin-top:4px;">タップすると図書館で同じ星の有名人を検索します。</div>
       </div>`;
     }
     if (!body) return "";
@@ -4629,7 +4617,7 @@
     // 詳細(重いHTML)は開いた時に生成する(1200人分を毎回作るとレンダリングが数秒かかるため)
     const detail = (lazyIdx !== undefined)
       ? `<details class="rc-detail lib-lazy" data-lidx="${lazyIdx}"><summary>詳細</summary><div class="rc-detail-body"></div></details>`
-      : resultDetailHtml(c, name, true);
+      : resultDetailHtml(c, name);
     const diag = c ? `
       <div class="rc-info">
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
@@ -4696,21 +4684,6 @@
     const n = norm(name);
     return allLibraryPeople().find(p => norm(p.name) === n && p.date === date) || null;
   }
-
-  // 「同じ星の有名人」チップ → 図書館タブに切り替えて検索
-  document.addEventListener("click", (e) => {
-    const b = e.target.closest(".lib-jump");
-    if (!b) return;
-    const q = b.dataset.q || "";
-    const tabBtn = document.querySelector('[data-tab="library"]');
-    if (tabBtn) tabBtn.click();
-    libraryGenreFilter = "all";
-    const inp = document.getElementById("library-search");
-    if (inp) inp.value = q;
-    if (!libraryRendered) { renderLibraryGenreSelect(); libraryRendered = true; }
-    renderLibrary();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
 
   // ジャンル絞り込みチップ(すべて/各ジャンル)を描く
   function renderLibraryGenreChips() {
@@ -5023,7 +4996,7 @@
       const ref = libraryMatchedRef[+det.dataset.lidx];
       if (!ref) return;
       det.dataset.filled = "1";
-      const inner = resultDetailHtml(ref.calc, ref.name, true);
+      const inner = resultDetailHtml(ref.calc, ref.name);
       const m = inner.match(/<div class="rc-detail-body">([\s\S]*)<\/div><\/details>$/);
       det.querySelector(".rc-detail-body").innerHTML = m ? m[1] : inner;
     });
