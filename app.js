@@ -4539,6 +4539,11 @@
         ] },
       ]
     },
+    {
+      icon: "🎴", menu: "テトラお題集", title: "テトラお題集 ── お題別12動物一覧",
+      intro: "SNSで使える735お題×12動物のネタ帳です。カテゴリで絞るか、キーワードで検索してください。お題をタップすると12動物の一覧が開きます。",
+      dynamic: "tetra", items: []
+    },
   ];
 
   let kaisetsuActive = 0;
@@ -4559,11 +4564,114 @@
     </details>`;
   }
 
+  // ---------- テトラお題集(データは別ファイル・開いたときだけ読み込む) ----------
+  let tetraData = null;       // 読み込み済みデータ
+  let tetraLoading = false;
+  let tetraCat = "";          // 選択中カテゴリ("" = すべて)
+  let tetraTerm = "";
+
+  async function loadTetraData() {
+    if (tetraData || tetraLoading) return tetraData;
+    tetraLoading = true;
+    try {
+      const r = await fetch("tetra-data.json", { cache: "force-cache" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      tetraData = await r.json();
+    } catch (e) {
+      console.error("テトラお題集の読み込みに失敗", e);
+      tetraData = null;
+    }
+    tetraLoading = false;
+    return tetraData;
+  }
+
+  function tetraFiltered() {
+    if (!tetraData) return [];
+    const term = tetraTerm.trim().toLowerCase();
+    return tetraData.items.filter(it => {
+      if (tetraCat && it.c !== tetraCat) return false;
+      if (!term) return true;
+      if (it.ti.toLowerCase().includes(term)) return true;
+      return it.rows.some(r => (r.t || "").toLowerCase().includes(term) || (r.s || "").toLowerCase().includes(term));
+    });
+  }
+
+  function tetraRowsHtml(it) {
+    return `<div class="tetra-rows">` + it.rows.map(r =>
+      `<div class="tetra-row">
+        <span class="tetra-animal">${escapeHtml(r.e || "")} ${escapeHtml(r.a)}</span>
+        <span class="tetra-text">${escapeHtml(r.t || "")}${r.s ? `<span class="tetra-sub">${escapeHtml(r.s)}</span>` : ""}</span>
+      </div>`).join("") + `</div>`;
+  }
+
+  function renderTetraList() {
+    const box = document.getElementById("tetra-list");
+    if (!box || !tetraData) return;
+    const list = tetraFiltered();
+    const head = document.getElementById("tetra-count");
+    if (head) head.textContent = `${list.length}お題`;
+    if (!list.length) { box.innerHTML = `<div class="empty-state"><div class="emoji">🔍</div><p>該当するお題が見つかりません。</p></div>`; return; }
+    // 重いので中身は開いた時に作る(全735お題×12行を一度に作らない)
+    box.innerHTML = list.map((it, i) =>
+      `<details class="rc-detail tetra-item" data-ti="${i}">
+        <summary><span class="tetra-cat">${escapeHtml((tetraData.cats || {})[it.c] || it.c)}</span>${escapeHtml(it.ti)}</summary>
+        <div class="rc-detail-body"></div>
+      </details>`).join("");
+    box._list = list;
+  }
+
+  function renderTetraSection() {
+    const body = document.getElementById("kaisetsu-body");
+    if (!body) return;
+    const cats = tetraData ? Object.keys(tetraData.cats || {}) : [];
+    body.innerHTML = `<div class="card">
+      <h2>🎴 テトラお題集 ── お題別12動物一覧</h2>
+      <div class="hint" style="margin-bottom:10px;">SNSで使える735お題×12動物のネタ帳です。カテゴリで絞るか、キーワードで検索してください。お題をタップすると12動物の一覧が開きます。</div>
+      ${tetraData ? `
+        <input type="text" id="tetra-search" class="lib-search" placeholder="🔍 お題名・本文で検索（例：褒め方、地雷、LINE）" value="${escapeHtml(tetraTerm)}">
+        <div class="chips" id="tetra-cats" style="margin:8px 0 10px;">
+          <div class="chip ${tetraCat === "" ? "selected" : ""}" data-cat="">すべて</div>
+          ${cats.map(k => `<div class="chip ${tetraCat === k ? "selected" : ""}" data-cat="${escapeHtml(k)}">${escapeHtml(tetraData.cats[k] || k)}</div>`).join("")}
+        </div>
+        <div class="hint" style="margin-bottom:8px;"><b id="tetra-count"></b>を表示中</div>
+        <div id="tetra-list"></div>
+      ` : `<div class="empty-state"><div class="emoji">📥</div><p>お題集を読み込んでいます…</p></div>`}
+    </div>`;
+    if (!tetraData) return;
+    renderTetraList();
+    const inp = document.getElementById("tetra-search");
+    let t = null;
+    inp?.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { tetraTerm = inp.value; renderTetraList(); }, 180); });
+    document.getElementById("tetra-cats")?.addEventListener("click", (e) => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      tetraCat = chip.dataset.cat || "";
+      document.querySelectorAll("#tetra-cats .chip").forEach(c => c.classList.toggle("selected", (c.dataset.cat || "") === tetraCat));
+      renderTetraList();
+    });
+    // お題を開いたときに12動物の行を作る(遅延)
+    document.getElementById("tetra-list")?.addEventListener("click", (e) => {
+      const det = e.target.closest("details.tetra-item");
+      if (!det || det.dataset.filled) return;
+      const box = document.getElementById("tetra-list");
+      const it = box._list && box._list[+det.dataset.ti];
+      if (!it) return;
+      det.dataset.filled = "1";
+      det.querySelector(".rc-detail-body").innerHTML = tetraRowsHtml(it);
+    });
+  }
+
   function renderKaisetsuSection(i) {
     kaisetsuActive = i;
     const body = document.getElementById("kaisetsu-body");
     const sec = KAISETSU_SECTIONS[i];
     if (!body || !sec) return;
+    document.querySelectorAll(".kaisetsu-menu-btn").forEach(b => b.classList.toggle("active", +b.dataset.sec === i));
+    if (sec.dynamic === "tetra") {
+      renderTetraSection();
+      if (!tetraData) loadTetraData().then(() => { if (kaisetsuActive === i) renderTetraSection(); });
+      return;
+    }
     body.innerHTML = `<div class="card">
       <h2>${sec.icon} ${escapeHtml(sec.title)}</h2>
       <div class="hint" style="margin-bottom:10px;">${escapeHtml(sec.intro)}</div>

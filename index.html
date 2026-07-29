@@ -514,6 +514,15 @@
   .abil-bar-val{ width:16px; text-align:right; font-weight:800; color:var(--ink); }
   .lib-note{ font-size:12px; line-height:1.8; color:var(--ink-soft); background:#faf6fe; border-left:3px solid var(--lavender); border-radius:8px; padding:9px 12px; margin-bottom:12px; }
   /* 図書館の編集フォーム(カード内) */
+  /* テトラお題集 */
+  .tetra-item>summary{ font-size:13.5px; }
+  .tetra-cat{ display:inline-block; background:#f3e9fb; color:#8a5c9e; font-size:10.5px; font-weight:700; border-radius:6px; padding:2px 7px; margin-right:7px; }
+  .tetra-rows{ display:flex; flex-direction:column; gap:6px; }
+  .tetra-row{ display:flex; gap:9px; align-items:flex-start; padding:7px 9px; background:#fbf7ff; border-radius:9px; }
+  .tetra-animal{ flex:0 0 84px; font-size:12.5px; font-weight:700; color:#8a5c9e; }
+  .tetra-text{ flex:1; min-width:0; font-size:13px; line-height:1.75; }
+  .tetra-sub{ display:block; font-size:11.5px; color:#8a7a93; margin-top:2px; }
+  @media (max-width:420px){ .tetra-row{ flex-direction:column; gap:2px; } .tetra-animal{ flex:none; } }
   .lib-edit-btn{ background:#eef4ff; border:1px solid #cfe0ff; color:#3a6ea8; border-radius:9px; width:30px; height:30px; font-size:14px; cursor:pointer; line-height:1; }
   .lib-edit-btn:hover{ background:#dfeaff; }
   .lib-edit-form{ margin:8px 14px 12px; padding:12px; background:#fbf7ff; border:1.5px solid #ece0f5; border-radius:12px; }
