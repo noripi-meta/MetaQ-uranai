@@ -534,6 +534,20 @@
   .lib-edit-actions button{ padding:7px 14px; font-size:13px; border-radius:9px; cursor:pointer; }
   .lib-ed-status{ font-size:12px; }
   .lib-edited-tag{ background:#eef4ff; color:#3a6ea8; font-size:10px; font-weight:700; border-radius:6px; padding:2px 6px; margin-left:6px; }
+  /* 絞り込みパネル(タップで選ぶだけ) */
+  .search-filter{ margin:8px 0 6px; }
+  .search-filter>summary{ cursor:pointer; list-style:none; font-size:13px; font-weight:700; color:#8a5c9e; background:#f6edfc; border-radius:10px; padding:9px 13px; user-select:none; }
+  .search-filter>summary::-webkit-details-marker{ display:none; }
+  .filt-body{ margin-top:8px; padding:12px; background:#fbf7ff; border:1.5px solid #ece0f5; border-radius:12px; }
+  .filt-rows{ display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:8px; }
+  .filt-item{ display:flex; flex-direction:column; gap:3px; }
+  .filt-item label{ font-size:11.5px; font-weight:700; color:#8a5c9e; }
+  .filt-item select{ padding:8px 9px; border:1px solid #e2d4ee; border-radius:9px; font-size:14px; background:#fff; font-family:inherit; }
+  .filt-fuku{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed #e6d8f2; }
+  .filt-fuku>label{ font-size:11.5px; font-weight:700; color:#8a5c9e; }
+  .filt-fuku-d{ width:60px; padding:8px 6px; border:1px solid #e2d4ee; border-radius:9px; font-size:15px; background:#fff; text-align:center; font-family:inherit; }
+  .filt-fuku .hint{ font-size:11px; flex-basis:100%; }
+  .filt-clear{ margin-top:11px; width:100%; padding:9px; font-size:13px; border-radius:9px; cursor:pointer; }
   /* 検索のヒント(使える言葉の例) */
   .search-help{ margin:6px 0 10px; }
   .search-help>summary{ cursor:pointer; list-style:none; font-size:12px; color:#8a5c9e; font-weight:700; user-select:none; }
@@ -1283,18 +1297,16 @@
   <div class="panel" id="panel-results">
     <div class="field" style="margin-bottom:10px;">
       <input type="text" id="results-search" class="lib-search" placeholder="🔍 名前・動物・福の神・レール・五行など何でも検索">
+      <details class="search-filter" open>
+        <summary>🔽 条件をえらんで絞り込む</summary>
+        <div class="filt-body" id="results-filter"></div>
+      </details>
       <details class="search-help">
-        <summary>🔎 検索でつかえる言葉（クリックで検索）</summary>
+        <summary>⌨️ 文字で検索するときのコツ</summary>
         <div class="search-help-body">
-          <b>柱で探す</b><span class="search-chip">本質ライオン</span><span class="search-chip">意思胎</span><span class="search-chip">表面チータ</span><br>
-          <b>福の神</b><span class="search-chip">福の神134</span><span class="search-chip">福の神1**</span><span class="search-chip">福の神*3*</span><span class="search-chip">福の神**4</span>
-          <span class="hint">（* は「なんでもOK」。3桁ぜんぶ・1桁目だけ・2桁目だけ…が探せます）</span><br>
-          <b>60タイプ</b><span class="search-chip">9P</span><span class="search-chip">No.55</span><span class="search-chip">庚申</span><br>
-          <b>レール</b><span class="search-chip">ロジック</span><span class="search-chip">ロマン</span>　<b>宿曜</b><span class="search-chip">角宿</span><br>
-          <b>五行</b><span class="search-chip">木なし</span><span class="search-chip">金多い</span><span class="search-chip">金5</span>　<b>エネルギー</b><span class="search-chip">エネルギー25</span><br>
-          <b>空亡</b><span class="search-chip">空亡子</span>　<b>生まれ</b><span class="search-chip">1990年</span><span class="search-chip">6月生まれ</span><span class="search-chip">1990年代</span><br>
-          <b>能力</b><span class="search-chip">能力行動</span>　
-          <span class="hint">スペースで区切ると「両方あてはまる人」だけに絞れます（例：本質ライオン 金多い）</span>
+          上の絞り込みで足りないときは、こんな言葉でも探せます。<br>
+          <span class="search-chip">9P</span><span class="search-chip">No.55</span><span class="search-chip">庚申</span><span class="search-chip">角宿</span><span class="search-chip">空亡子</span><span class="search-chip">エネルギー25</span><span class="search-chip">1990年</span><span class="search-chip">6月生まれ</span><span class="search-chip">金5</span><span class="search-chip">能力行動</span><span class="search-chip">グループ名</span><br>
+          <span class="hint">スペースで区切ると「両方あてはまる人」だけになります。</span>
         </div>
       </details>
 
@@ -1376,18 +1388,16 @@
     <div id="lib-view-list">
       <div class="card" style="padding:14px;">
         <input type="text" id="library-search" class="lib-search" placeholder="🔍 名前・解説・動物・福の神・レール・五行など何でも検索">
+        <details class="search-filter" open>
+          <summary>🔽 条件をえらんで絞り込む</summary>
+          <div class="filt-body" id="library-filter"></div>
+        </details>
         <details class="search-help">
-          <summary>🔎 検索でつかえる言葉（クリックで検索）</summary>
+          <summary>⌨️ 文字で検索するときのコツ</summary>
           <div class="search-help-body">
-            <b>柱で探す</b><span class="search-chip">本質ライオン</span><span class="search-chip">意思胎</span><span class="search-chip">表面チータ</span><br>
-            <b>福の神</b><span class="search-chip">福の神134</span><span class="search-chip">福の神1**</span><span class="search-chip">福の神*3*</span><span class="search-chip">福の神**4</span>
-            <span class="hint">（* は「なんでもOK」。3桁ぜんぶ・1桁目だけ・2桁目だけ…が探せます）</span><br>
-            <b>60タイプ</b><span class="search-chip">9P</span><span class="search-chip">No.55</span><span class="search-chip">庚申</span><br>
-            <b>レール</b><span class="search-chip">ロジック</span><span class="search-chip">ロマン</span>　<b>宿曜</b><span class="search-chip">角宿</span><br>
-            <b>五行</b><span class="search-chip">木なし</span><span class="search-chip">金多い</span><span class="search-chip">金5</span>　<b>エネルギー</b><span class="search-chip">エネルギー25</span><br>
-            <b>空亡</b><span class="search-chip">空亡子</span>　<b>生まれ</b><span class="search-chip">1990年</span><span class="search-chip">6月生まれ</span><span class="search-chip">1990年代</span><br>
-            <b>能力</b><span class="search-chip">能力行動</span>　
-            <span class="hint">スペースで区切ると「両方あてはまる人」だけに絞れます（例：本質ライオン 金多い）</span>
+            上の絞り込みで足りないときは、こんな言葉でも探せます。<br>
+            <span class="search-chip">9P</span><span class="search-chip">No.55</span><span class="search-chip">庚申</span><span class="search-chip">角宿</span><span class="search-chip">空亡子</span><span class="search-chip">エネルギー25</span><span class="search-chip">1990年</span><span class="search-chip">6月生まれ</span><span class="search-chip">金5</span><span class="search-chip">能力行動</span><span class="search-chip">実業家</span><br>
+            <span class="hint">スペースで区切ると「両方あてはまる人」だけになります。</span>
           </div>
         </details>
 

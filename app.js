@@ -4661,6 +4661,102 @@
     });
   }
 
+  // ============ 絞り込みパネル(タップで選ぶだけ。呪文を覚えなくていい) ============
+  // 選んだ条件は検索欄に「言葉」として入るので、検索エンジンはそのまま使える。
+  const FILTER_ANIMALS = ["狼", "こじか", "猿", "チータ", "黒ひょう", "ライオン", "虎", "たぬき", "子守熊", "ゾウ", "ひつじ", "ペガサス"];
+  const FILTER_RAILS = ["マイペース", "マイウェイ", "ピース", "ロマン", "ヒューマニティ", "リアリティ", "ワイルド", "エリート", "ユニーク", "ロジック"];
+  const FILTER_ELEMENTS = ["木", "火", "土", "金", "水"];
+
+  // 検索欄の語句を配列に(スペース区切り)
+  function filterWords(input) { return (input.value || "").trim().split(/[\s　]+/).filter(Boolean); }
+  // 条件を1つ足す/差し替える(同じ種類の条件は入れ替え、無指定なら消す)
+  function filterSetWord(input, pattern, word) {
+    const words = filterWords(input).filter(w => !pattern.test(w));
+    if (word) words.push(word);
+    input.value = words.join(" ");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function filterCurrent(input, pattern) {
+    const w = filterWords(input).find(x => pattern.test(x));
+    return w || "";
+  }
+
+  function buildFilterPanel(panelId, inputId) {
+    const box = document.getElementById(panelId);
+    const input = document.getElementById(inputId);
+    if (!box || !input || box.dataset.ready) return;
+    box.dataset.ready = "1";
+
+    const sel = (label, pattern, options, toWord) => {
+      const wrap = document.createElement("div");
+      wrap.className = "filt-item";
+      const lab = document.createElement("label");
+      lab.textContent = label;
+      const s = document.createElement("select");
+      s.innerHTML = `<option value="">指定なし</option>` +
+        options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
+      s.addEventListener("change", () => filterSetWord(input, pattern, s.value ? toWord(s.value) : ""));
+      s._sync = () => {
+        const cur = filterCurrent(input, pattern);
+        const hit = options.find(o => toWord(o) === cur);
+        s.value = hit || "";
+      };
+      wrap.appendChild(lab); wrap.appendChild(s);
+      return wrap;
+    };
+
+    const rows = document.createElement("div");
+    rows.className = "filt-rows";
+    // 柱×動物
+    rows.appendChild(sel("🧡 本質", /^本質/, FILTER_ANIMALS, v => "本質" + v));
+    rows.appendChild(sel("💬 表面", /^表面/, FILTER_ANIMALS, v => "表面" + v));
+    rows.appendChild(sel("🧭 意思", /^意思/, FILTER_ANIMALS, v => "意思" + v));
+    // レール
+    rows.appendChild(sel("🛤️ レール", new RegExp("^(" + FILTER_RAILS.join("|") + ")$"), FILTER_RAILS, v => v));
+    // 五行
+    rows.appendChild(sel("🌳 多い五行", /多い$/, FILTER_ELEMENTS, v => v + "多い"));
+    rows.appendChild(sel("🕳️ ない五行", /なし$/, FILTER_ELEMENTS, v => v + "なし"));
+    box.appendChild(rows);
+
+    // 福の神(3桁を1つずつ選ぶ)
+    const fuku = document.createElement("div");
+    fuku.className = "filt-fuku";
+    fuku.innerHTML = `<label>🍀 福の神</label>`;
+    const digits = [];
+    for (let i = 0; i < 3; i++) {
+      const s = document.createElement("select");
+      s.innerHTML = `<option value="">＊</option>` + [0,1,2,3,4,5,6,7,8,9].map(n => `<option value="${n}">${n}</option>`).join("");
+      s.className = "filt-fuku-d";
+      digits.push(s);
+      fuku.appendChild(s);
+      s.addEventListener("change", () => {
+        const q = digits.map(d => d.value === "" ? "*" : d.value).join("");
+        filterSetWord(input, /^福の神/, q === "***" ? "" : "福の神" + q);
+      });
+    }
+    const note = document.createElement("span");
+    note.className = "hint";
+    note.textContent = "＊はどれでもOK（1桁だけ選んでも探せます）";
+    fuku.appendChild(note);
+    fuku._sync = () => {
+      const cur = filterCurrent(input, /^福の神/).replace(/^福の神/, "");
+      digits.forEach((d, i) => { d.value = /^[0-9*]{3}$/.test(cur) && cur[i] !== "*" ? cur[i] : ""; });
+    };
+    box.appendChild(fuku);
+
+    // クリア
+    const clear = document.createElement("button");
+    clear.className = "btn-secondary filt-clear";
+    clear.textContent = "条件をぜんぶ消す";
+    clear.addEventListener("click", () => { input.value = ""; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    box.appendChild(clear);
+
+    // 検索欄が変わったらプルダウンの表示を合わせる
+    box._syncAll = () => { box.querySelectorAll("select").forEach(s => s._sync && s._sync()); if (fuku._sync) fuku._sync(); };
+    input.addEventListener("input", () => box._syncAll());
+    box._syncAll();
+  }
+
   function renderKaisetsuSection(i) {
     kaisetsuActive = i;
     const body = document.getElementById("kaisetsu-body");
@@ -4738,6 +4834,7 @@
     if (accessCard) accessCard.style.display = isAdmin ? "" : "none";
     if (isAdmin) {
       if (!libraryRendered) { renderLibraryGenreSelect(); renderLibrary(); libraryRendered = true; }
+      buildFilterPanel("library-filter", "library-search");
       renderCompatGuide();
       renderKaisetsu();
       loadAccessConfig();
@@ -5251,6 +5348,7 @@
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
+    buildFilterPanel("results-filter", "results-search");
     renderLibGenreDatalist();
 
     // 図書館 - 詳細の遅延生成(「詳細」を開いた時に初めて中身を作る)
