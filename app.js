@@ -752,21 +752,108 @@
     return t;
   }
 
+  // ============ 検索エンジン(診断リスト・図書館の共通基盤) ============
+  // 命式から検索用のトークンを作る。ここに足したものは両方の検索欄で効く。
+  function calcSearchTokens(c, dateStr) {
+    if (!c) return [];
+    const t = [];
+    const push = (...xs) => xs.forEach(x => { if (x) t.push(String(x)); });
+    // 動物・十二運(柱つき/柱なしの両方)
+    push(...pillarSearchTokens(c));
+    [["本質", c.honshitsu], ["表面", c.hyomen], ["意思", c.ishi], ["時柱", c.jichu]].forEach(([lbl, p]) => {
+      if (!p) return;
+      push(p.animal, p.juniun);
+      if (p.group) push(GROUP_LABEL[p.group], lbl + GROUP_LABEL[p.group]);
+    });
+    // 60タイプ
+    if (c.bunrui60 != null) {
+      push("no." + c.bunrui60, "no" + c.bunrui60, "60タイプ" + c.bunrui60);
+      const st = SIXTY_TYPES[c.bunrui60 - 1];
+      if (st) push(st.code, st.kanshi, st.tsuhensei, st.hitokoto, st.omoteura);
+    }
+    push(c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName);
+    // 干支(四柱)
+    push(c.yearGz, c.monthGz, c.dayGz, c.jichu && c.jichu.gz, c.dayStem, "日干" + (c.dayStem || ""));
+    // レール
+    if (c.rail) push(c.rail.rail, c.rail.tsuhensei, "レール" + c.rail.rail, c.rail.element);
+    // 福の神
+    if (c.fukuNoKami) push("福の神" + c.fukuNoKami.label, c.fukuNoKami.label);
+    // 空亡
+    if (c.kobaku) { push(c.kobaku.junName); (c.kobaku.branches || []).forEach(b => push("空亡" + b, b + "空亡")); }
+    // エネルギー
+    if (c.energy) push("エネルギー" + c.energy.total, c.energy.total + "点");
+    // 五行(多い・欠け)
+    if (c.gogyou) {
+      const vals = Object.values(c.gogyou), mx = Math.max.apply(null, vals);
+      Object.keys(c.gogyou).forEach(el => {
+        const n = c.gogyou[el];
+        push(el + n);
+        if (n === 0) push(el + "なし", el + "ゼロ", el + "欠け");
+        if (n === mx) push(el + "多い");
+      });
+    }
+    // 能力(第一・第二)
+    if (c.ability && c.ability.axes) {
+      const sorted = c.ability.axes.slice().sort((a, b) => b.value - a.value);
+      if (sorted[0] && sorted[0].value > 0) push("能力" + sorted[0].label, sorted[0].label + "型");
+      if (sorted[1] && sorted[1].value > 0) push("能力" + sorted[1].label);
+    }
+    // 宿曜
+    const sh = shukuOf(dateStr);
+    if (sh) push(sh.shuku, sh.shuku + "宿", "宿曜" + sh.shuku);
+    // 生年月日の部品(1990年・6月・24日・1990年代)
+    const dm = String(dateStr || "").match(/^(\d{1,4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (dm) {
+      const y = +dm[1], mo = +dm[2], d = +dm[3];
+      push(y + "年", mo + "月", d + "日", mo + "月生まれ", Math.floor(y / 10) * 10 + "年代");
+    }
+    return t.filter(Boolean);
+  }
+
+  // 福の神の柔軟検索。「福の神134」完全一致 /「福の神1**」1桁目が1 /「福の神*3*」2桁目が3 /
+  // 「福の神**4」3桁目が4 /「福の神1桁目3」/「福の神3」いずれかの桁に3、に対応。
+  function fukuQueryMatch(term, fuku) {
+    if (!fuku) return null;
+    const m = String(term).match(/^福の神\s*(.+)$/);
+    if (!m) return null;
+    const q = m[1].trim().replace(/[＊＿？０-９]/g, (ch) => ({ "＊": "*", "＿": "_", "？": "?" }[ch] || String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)));
+    const digits = [fuku.n1, fuku.n2, fuku.n3];
+    // 「1桁目3」形式
+    const km = q.match(/^([1-3])桁目\s*([0-9])$/);
+    if (km) return digits[+km[1] - 1] === +km[2];
+    // ワイルドカード3文字(* _ ? 〇 ○ ●)
+    if (/^[0-9*_?〇○●]{3}$/.test(q)) {
+      return digits.every((d, i) => {
+        const ch = q[i];
+        return /[0-9]/.test(ch) ? d === +ch : true;
+      });
+    }
+    // 数字だけ: 3桁=完全一致 / 1〜2桁=どこかの桁に含まれる(部分一致)
+    if (/^[0-9]+$/.test(q)) {
+      if (q.length === 3) return fuku.label === q;
+      return q.split("").every(ch => digits.indexOf(+ch) >= 0);
+    }
+    return null;
+  }
+
+  // 1件が検索語すべて(スペース区切りAND)にマッチするか
+  function matchesSearch(term, haystack, calc) {
+    const words = String(term || "").trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
+    if (!words.length) return true;
+    return words.every(w => {
+      const fk = fukuQueryMatch(w, calc && calc.fukuNoKami);
+      if (fk !== null) return fk;
+      return haystack.indexOf(w) >= 0;
+    });
+  }
+
   function resultSearchText(r) {
     const c = r.calc || {};
     const gnames = resultGroupIds(r).map(id => { const g = getGroupById(id); return g ? g.name : ""; });
     const parts = [
       r.sei, r.mei, r.name, r.nickname, r.note, r.birthDate, r.birthTime,
       ...gnames,
-      c.bunrui60 != null ? "no." + c.bunrui60 : "", c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
-      c.rail && c.rail.rail, c.rail && c.rail.tsuhensei,
-      c.fukuNoKami && ("福の神" + c.fukuNoKami.label),
-      c.honshitsu && c.honshitsu.animal, c.honshitsu && GROUP_LABEL[c.honshitsu.group],
-      c.hyomen && c.hyomen.animal, c.hyomen && GROUP_LABEL[c.hyomen.group],
-      c.ishi && c.ishi.animal, c.ishi && GROUP_LABEL[c.ishi.group],
-      c.jichu && c.jichu.animal,
-      // 柱別検索用トークン: 「本質ライオン」「表面チータ」「意思胎」「時柱死」のように検索できる
-      ...pillarSearchTokens(c)
+      ...calcSearchTokens(c, r.birthDate)
     ];
     return parts.filter(Boolean).join(" ").toLowerCase();
   }
@@ -1249,7 +1336,7 @@
     let filtered = results;
     if (filterVal === "none") filtered = results.filter(r => resultGroupIds(r).length === 0);
     else if (filterVal !== "all") filtered = results.filter(r => resultGroupIds(r).includes(filterVal));
-    if (term) filtered = filtered.filter(r => resultSearchText(r).includes(term));
+    if (term) filtered = filtered.filter(r => matchesSearch(term, resultSearchText(r), r.calc));
     // ⭐でピン留めした人(最大5人)を常に上へ(ピンした順)
     const pinned = getPinnedIds();
     if (pinned.length) {
@@ -2343,35 +2430,18 @@
     { genre: "偉人", name: "坂本 龍馬", date: "1836/01/03", desc: "薩長同盟の仲介や「船中八策」の提示を行い、明治維新の立役者となった幕末の志士。" },
     { genre: "偉人", name: "福沢 諭吉", date: "1835/01/10", desc: "『学問のすすめ』を著し、慶應義塾を創設して日本の近代化に貢献した。" },
     { genre: "偉人", name: "野口 英世", date: "1876/11/09", desc: "黄熱病や梅毒の研究に命を捧げ、世界的に活躍した日本の細菌学者。" },
-    { genre: "偉人", name: "紫式部", date: "973年頃", desc: "平安時代に世界最古の長編小説とされる『源氏物語』を執筆した女性作家。" },
     { genre: "偉人", name: "聖徳太子", date: "574/02/07", desc: "推古天皇の摂政として十七条憲法や冠位十二階を定め、隋に遣使を派遣した政治家。" },
-    { genre: "偉人", name: "クリストファー・コロンブス", date: "1451年頃", desc: "大西洋を横断して大航海時代を切り開き、ヨーロッパ人にアメリカ大陸を認知させた。" },
-    { genre: "偉人", name: "フェルディナンド・マゼラン", date: "1480年頃", desc: "人類史上初となる世界周航を成し遂げた航海を率いたポルトガルの探検家。" },
     { genre: "偉人", name: "マルコ・ポーロ", date: "1254/09/15", desc: "アジアを旅して『東方見聞録』を著し、欧州にアジアの文化を紹介した。" },
     { genre: "偉人", name: "ウィルバー・ライト", date: "1867/04/16", desc: "ライト兄弟の兄。弟と共に人類初の動力飛行機による有人飛行に成功した。" },
     { genre: "偉人", name: "オーヴィル・ライト", date: "1871/08/19", desc: "ライト兄弟の弟。兄と共に飛行機の発明と実用化を成し遂げた。" },
     { genre: "偉人", name: "アレクサンダー・グラハム・ベル", date: "1847/03/03", desc: "実用的な電話機を発明し、世界の通信システムを劇的に変えた発明家。" },
     { genre: "偉人", name: "ルイ・パスツール", date: "1822/12/27", desc: "牛乳の低温殺菌法を開発し、狂犬病ワクチンなどを発明した近代細菌学の開祖。" },
     { genre: "偉人", name: "アレクサンダー・フレミング", date: "1881/08/06", desc: "世界初の抗生物質「ペニシリン」を発見し、医療に革命をもたらした細菌学者。" },
-    { genre: "偉人", name: "ガイウス・ユリウス・カエサル", date: "紀元前100年7月12日", desc: "「賽は投げられた」で有名。終身独裁官となりローマ帝国誕生の礎を築いた。" },
-    { genre: "偉人", name: "アレクサンドロス大王", date: "紀元前356年頃", desc: "ギリシャからインドに及ぶ大帝国を築き、ヘレニズム文化を生んだマケドニアの王。" },
-    { genre: "偉人", name: "チンギス・ハーン", date: "1162年頃", desc: "遊牧民族を統一してモンゴル帝国を建国し、史上最大の連続領土を築いた征服者。" },
     { genre: "偉人", name: "ジャンヌ・ダルク", date: "1412/01/06", desc: "百年戦争でフランス軍を率いてオルレアンを解放した「オルレアンの乙女」。" },
     { genre: "偉人", name: "エリザベス1世", date: "1533/09/07", desc: "イギリスの黄金時代を築き、スペインの無敵艦隊を撃破した女王。" },
     { genre: "偉人", name: "ルイ14世", date: "1638/09/05", desc: "「太陽王」と呼ばれ、ヴェルサイユ宮殿を建設してフランス絶対王政の最盛期を築いた。" },
     { genre: "偉人", name: "ピョートル1世（大帝）", date: "1672/06/09", desc: "ロシアを近代化・西欧化し、一大帝国へと発展させたロシア皇帝。" },
-    { genre: "偉人", name: "クレオパトラ7世", date: "紀元前69年", desc: "古代エジプト最後の女王。美貌と知略でカエサルやアントニウスと結んだ。" },
-    { genre: "偉人", name: "始皇帝", date: "紀元前259年2月18日", desc: "中国を初めて統一して秦王朝を樹立。万里の長城の建設や文字・通貨の統一を行った。" },
-    { genre: "偉人", name: "孔子", date: "紀元前551年9月28日", desc: "儒教の開祖。『論語』を通じて東アジアの道徳や政治思想に多大な影響を与えた。" },
-    { genre: "偉人", name: "ブッダ（ゴータマ・シッダールタ）", date: "紀元前5〜6世紀頃", desc: "仏教の開祖。四諦や八正道を説き、生きる苦しみからの解脱を教えた。" },
-    { genre: "偉人", name: "イエス・キリスト", date: "紀元前4年頃", desc: "キリスト教の精神的基盤となったナザレの預言者。神の愛と許しを説いた。" },
-    { genre: "偉人", name: "ムハンマド", date: "570年頃", desc: "イスラム教の開祖。神（アッラー）の啓示を受け、イスラム共同体を確立した。" },
-    { genre: "偉人", name: "ソクラテス", date: "紀元前470年頃", desc: "「無知の知」を提唱し、対話を通じて真理を追究した古代ギリシャの哲学者。" },
-    { genre: "偉人", name: "プラトン", date: "紀元前427年頃", desc: "ソクラテスの弟子。『国家』などを著し、イデア論を提唱した西洋哲学の祖。" },
-    { genre: "偉人", name: "アリストテレス", date: "紀元前384年", desc: "万学の祖と呼ばれ、論理学、物理学、政治学などあらゆる分野を体系化した。" },
-    { genre: "偉人", name: "ホメロス", date: "紀元前8世紀頃", desc: "古代ギリシャの盲目の詩人。『イリアス』『オデュッセイア』の二大叙事詩を残した。" },
     { genre: "偉人", name: "ダンテ・アリギエーリ", date: "1265/06/01", desc: "『神曲』を著し、イタリア文学の基礎を築くとともにルネサンスの先駆者となった。" },
-    { genre: "偉人", name: "ヨハン・グーテンベルク", date: "1400年頃", desc: "活版印刷術を発明し、聖書などの大量印刷を可能にして知識の普及に貢献した。" },
     { genre: "偉人", name: "ニコラウス・コペルニクス", date: "1473/02/19", desc: "天動説が主流だった時代に、地球が太陽の周りを回っているとする地動説を唱えた。" },
     { genre: "偉人", name: "イマヌエル・カント", date: "1724/04/22", desc: "『純粋理性批判』を著し、認識論に大きな変革をもたらしたドイツの哲学者。" },
     { genre: "偉人", name: "フリードリヒ・ニーチェ", date: "1844/10/15", desc: "「神は死んだ」と言い放ち、永劫回帰や「超人」思想を唱えた哲学者。" },
@@ -2402,7 +2472,6 @@
     { genre: "偉人", name: "黒澤 明", date: "1910/03/23", desc: "『七人の侍』『羅生門』などを監督し、世界の映画界に多大な影響を与えた巨匠。" },
     { genre: "偉人", name: "宮崎 駿", date: "1941/01/05", desc: "スタジオジブリを率い、『千と千尋の神隠し』などで世界的な評価を得た映画監督。" },
     { genre: "偉人", name: "葛飾 北斎", date: "1760/10/31", desc: "『富嶽三十六景』で知られ、海外の印象派の画家たちにも大きな影響を与えた浮世絵師。" },
-    { genre: "偉人", name: "鑑真", date: "688年", desc: "唐の僧侶。5度もの失明の苦難を乗り越えて日本に渡り、正しい仏教の戒律を伝えた。" },
     { genre: "偉人", name: "マシュー・ペリー", date: "1794/04/10", desc: "黒船を率いて浦賀に来航し、鎖国をしていた日本に開国を迫ったアメリカの海軍提督。" },
     { genre: "偉人", name: "ニール・アームストロング", date: "1930/08/05", desc: "アポロ11号の船長として、1969年に人類で初めて月面に足跡を刻んだ宇宙飛行士。" },
     { genre: "偉人", name: "渋沢 栄一", date: "1840/03/16", desc: "約500もの企業の設立に関わり、日本の近代資本主義の基礎を築いた実業家。" },
@@ -2650,7 +2719,6 @@
     { genre: "フォーブス世界2025", name: "ビル・ゲイツ", date: "1955/10/28", desc: "19位 マイクロソフト｜共同創業者。ゲイツ財団で活動。" },
     { genre: "フォーブス世界2025", name: "フランソワーズ・ベッテンコート・メイヤーズ", date: "1953/07/10", desc: "20位 ロレアル｜ロレアルの相続人。女性首位。" },
     { genre: "フォーブス世界2025", name: "ムケシュ・アンバニ", date: "1957/04/19", desc: "21位 リライアンス・インダストリーズ｜インド最大の民間企業を率いる大富豪。" },
-    { genre: "フォーブス世界2025", name: "ジャンカルロ・デヴァシーニ", date: "", desc: "22位 テザー（Tether）｜ステーブルコインUSDTを発行するテザー社のCFO。" },
     { genre: "フォーブス世界2025", name: "トーマス・ピーターフィ", date: "1944/11/17", desc: "23位 インタラクティブ・ブローカーズ｜オンライン証券の先駆者。" },
     { genre: "フォーブス世界2025", name: "ジュリア・コック", date: "1962/04/12", desc: "24位 コック・インダストリーズ｜米最大級の非上場企業の遺産を相続。" },
     { genre: "フォーブス世界2025", name: "チャールズ・コック", date: "1935/11/01", desc: "25位 コック・インダストリーズ｜石油・化学・エネルギーの巨大企業の経営トップ。" },
@@ -2714,7 +2782,6 @@
     { genre: "フォーブス世界2023", name: "張一鳴（チャン・イーミン）", date: "1983/04/01", desc: "23位 バイトダンス｜TikTokを世界的社会現象に押し上げた。" },
     { genre: "フォーブス世界2023", name: "フィル・ナイト", date: "1938/02/24", desc: "24位 NIKE｜世界の「ナイキ」を創業。" },
     { genre: "フォーブス世界2023", name: "マーク・ザッカーバーグ", date: "1984/05/14", desc: "25位 Meta（Facebook）｜メタバースへの過剰投資懸念で一時25位前後へ。" },
-    { genre: "フォーブス世界2023", name: "ロドルフ・サアデ", date: "", desc: "26位 CMA CGM｜フランスの大手海運・コンテナ輸送を継承。" },
     { genre: "フォーブス世界2023", name: "ジャクリーン・マース", date: "1939/10/10", desc: "27位 マーズ｜M&M'sやペットフード大手マーズの株式を相続。" },
     { genre: "フォーブス世界2023", name: "ジョン・マース", date: "1936/10/15", desc: "28位 マーズ｜ジャクリーン氏の兄。巨大菓子メーカーの株式を保有。" },
     { genre: "フォーブス世界2023", name: "ジョバンニ・フェレロ", date: "1964/09/21", desc: "29位 フェレロ｜「フェレロ ロシェ」「ヌテラ」のイタリア菓子王。" },
@@ -2746,8 +2813,6 @@
     { genre: "フォーブス世界2022", name: "張一鳴（チャン・イーミン）", date: "1983/04/01", desc: "25位 バイトダンス｜TikTokが社会現象となり資産が急伸。" },
     { genre: "フォーブス世界2022", name: "デビッド・トムソン", date: "1957/06/12", desc: "26位 トムソン・ロイター｜カナダの巨大メディア・情報配信の一族トップ。" },
     { genre: "フォーブス世界2022", name: "ディーター・シュワルツ", date: "1939/09/24", desc: "27位 シュワルツ・グループ｜欧州で圧倒的な格安スーパーLidlを展開。" },
-    { genre: "フォーブス世界2022", name: "ホセ・ビジャレアル", date: "", desc: "28位 アルファ・グループ｜メキシコの巨大石油化学・食品・自動車部品企業。" },
-    { genre: "フォーブス世界2022", name: "ロドルフ・サアデ", date: "", desc: "29位 CMA CGM｜海上物流の混乱と運賃高騰の恩恵を受けた海運大手。" },
     { genre: "フォーブス世界2022", name: "フランソワ・ピノー", date: "1936/08/21", desc: "30位 ケリング｜グッチ・サンローランを擁するラグジュアリー創業者。" },
     { genre: "フォーブス世界2021", name: "ジェフ・ベゾス", date: "1964/01/12", desc: "1位 Amazon｜巣ごもり需要でECが爆発し4年連続の世界首位。" },
     { genre: "フォーブス世界2021", name: "イーロン・マスク", date: "1971/06/28", desc: "2位 テスラ・スペースX｜テスラ株が前年比705%上昇し前年31位から2位へ。" },
@@ -2769,7 +2834,6 @@
     { genre: "フォーブス世界2021", name: "ジム・ウォルトン", date: "1948/06/07", desc: "18位 ウォルマート｜創業者の三男。一族の金融部門を支える。" },
     { genre: "フォーブス世界2021", name: "ロブ・ウォルトン", date: "1944/10/28", desc: "19位 ウォルマート｜創業者の長男。チェーンの拡大に尽力。" },
     { genre: "フォーブス世界2021", name: "マイケル・ブルームバーグ", date: "1942/02/14", desc: "20位 ブルームバーグ｜金融市場に欠かせない情報システムの創業者。" },
-    { genre: "フォーブス世界2021", name: "コリン・ホアン（黄崢）", date: "", desc: "21位 拼多多（ピンドゥオドゥオ）｜共同購入ECの創業者。急速にユーザーを獲得。" },
     { genre: "フォーブス世界2021", name: "マッケンジー・スコット", date: "1970/04/07", desc: "22位 Amazon｜ベゾス氏との離婚で得たAmazon株を元手に慈善寄付。" },
     { genre: "フォーブス世界2021", name: "ダニエル・ギルバート", date: "1962/01/17", desc: "23位 クイッケン・ローンズ｜オンライン住宅ローン大手の上場で資産が急増。" },
     { genre: "フォーブス世界2021", name: "ガウタム・アダニ", date: "1962/06/24", desc: "24位 アダニ・グループ｜インフラ・石炭・港湾。この頃から資産が急上昇。" },
@@ -2801,7 +2865,6 @@
     { genre: "フォーブス世界2020", name: "ジョン・マース", date: "1936/10/15", desc: "20位 マーズ｜ジャクリーン氏の兄。マース株を保有。" },
     { genre: "フォーブス世界2020", name: "ムケシュ・アンバニ", date: "1957/04/19", desc: "21位 リライアンス・インダストリーズ｜格安4G通信Jioの成功でアジア屈指の地位へ。" },
     { genre: "フォーブス世界2020", name: "マッケンジー・スコット", date: "1970/04/07", desc: "22位 Amazon｜離婚に伴いAmazon株の4%を取得し世界有数の富豪へ。" },
-    { genre: "フォーブス世界2020", name: "カール・アルブレヒトJr.", date: "", desc: "23位 Aldi（アルディ）｜ドイツの超巨大格安スーパーを築いた一族の継承者。" },
     { genre: "フォーブス世界2020", name: "デビッド・トムソン", date: "1957/06/12", desc: "24位 トムソン・ロイター｜カナダの世界的メディア・金融データ大手を率いる。" },
     { genre: "フォーブス世界2020", name: "フィル・ナイト", date: "1938/02/24", desc: "25位 NIKE｜世界No.1スポーツブランド「ナイキ」共同創業者。" },
     { genre: "フォーブス世界2020", name: "李嘉誠（リ・カシン）", date: "1928/07/29", desc: "26位 長江和記実業｜香港のインフラ・港湾・不動産・通信を支配。" },
@@ -3035,7 +3098,6 @@
     { genre: "フォーブス日本2026", name: "大塚 裕司", date: "1953/09/01", desc: "16位 大塚商会｜ITソリューション商社・大塚商会の2代目社長。" },
     { genre: "フォーブス日本2026", name: "上月 景正", date: "1940/11/12", desc: "17位 コナミグループ｜ゲーム・スポーツクラブ大手コナミの創業者。" },
     { genre: "フォーブス日本2026", name: "小川一維（一族）", date: "1977/10/19", desc: "18位 ゼンショーHD｜「すき家」等を展開する外食日本一のチェーン。" },
-    { genre: "フォーブス日本2026", name: "内山庄三郎（一族）", date: "", desc: "19位 レーザーテック｜半導体マスク欠陥検査装置で世界シェア100%の一族。" },
     { genre: "フォーブス日本2026", name: "森佳子（一族）", date: "1940/07/13", desc: "20位 森ビル｜六本木ヒルズ・麻布台ヒルズなど都心の街づくりを行う一族。" },
     { genre: "フォーブス日本2026", name: "永守 重信", date: "1944/08/28", desc: "21位 ニデック（日本電産）｜世界的モーター大手ニデックの創業者。M&Aの達人。" },
     { genre: "フォーブス日本2026", name: "土屋嘉雄（一族）", date: "1932/05/18", desc: "22位 ワークマン／カインズ｜ベイシアグループ創業者。「ワークマン」を一般向けに大ヒット。" },
@@ -3043,7 +3105,6 @@
     { genre: "フォーブス日本2026", name: "荒井 正昭", date: "1965/12/17", desc: "24位 オープンハウスグループ｜戸建住宅急成長企業の創業者。" },
     { genre: "フォーブス日本2026", name: "似鳥 昭雄", date: "1944/03/05", desc: "25位 ニトリHD｜家具チェーン「ニトリ」の創業者。" },
     { genre: "フォーブス日本2026", name: "多田 勝美", date: "1945/07/11", desc: "26位 大東建託｜アパート建築・管理大手・大東建託の創業者。" },
-    { genre: "フォーブス日本2026", name: "襟川 陽一・恵子", date: "", desc: "27位 コーエーテクモHD｜「信長の野望」などを生んだゲーム業界の名物夫妻。" },
     { genre: "フォーブス日本2026", name: "福嶋 康博", date: "1947/08/18", desc: "28位 スクウェア・エニックス｜旧エニックス創業者。「ドラゴンクエスト」の生みの親。" },
     { genre: "フォーブス日本2026", name: "宇野 正晃", date: "1947/05/18", desc: "29位 コスモス薬品｜九州発「ドラッグコスモス」を全国展開。" },
     { genre: "フォーブス日本2026", name: "石原崇匡（一族）", date: "1978/07/26", desc: "30位 平和｜パチンコ・パチスロ大手「平和」の創業者一族。" },
@@ -3065,7 +3126,6 @@
     { genre: "フォーブス日本2025", name: "似鳥昭雄", date: "1944/03/05", desc: "16位 ニトリHD｜「ニトリ」創業者。製造物流小売モデルを確立。" },
     { genre: "フォーブス日本2025", name: "上月景正", date: "1940/11/12", desc: "17位 コナミグループ｜スポーツクラブ・アミューズメント・ゲームの複合大手。" },
     { genre: "フォーブス日本2025", name: "大塚裕司", date: "1954/02/13", desc: "18位 大塚商会｜オフィスのIT化や物販サービスを統合。" },
-    { genre: "フォーブス日本2025", name: "襟川陽一・恵子", date: "", desc: "19位 コーエーテクモHD｜歴史ゲームIPを多数持ち投資家としても有名。" },
     { genre: "フォーブス日本2025", name: "永守重信", date: "1944/08/28", desc: "20位 ニデック（日本電産）｜精密から大型まで網羅する世界的モーターの王。" },
     { genre: "フォーブス日本2025", name: "森佳子（一族）", date: "1940/07/13", desc: "21位 森ビル｜「ヒルズ」シリーズを展開し都心の価値向上に貢献。" },
     { genre: "フォーブス日本2025", name: "多田勝美", date: "1945/07/12", desc: "22位 大東建託｜賃貸住宅の管理・仲介で圧倒的シェアを構築。" },
@@ -3074,8 +3134,6 @@
     { genre: "フォーブス日本2025", name: "宇野正晃", date: "1947/05/18", desc: "25位 コスモス薬品｜小商圏型メガドラッグストア戦略で躍進。" },
     { genre: "フォーブス日本2025", name: "石原崇匡（一族）", date: "1978/07/26", desc: "26位 平和｜パチンコ機大手。ゴルフ場（PGM）も傘下に持つ。" },
     { genre: "フォーブス日本2025", name: "荒井正昭", date: "1965/12/17", desc: "27位 オープンハウスグループ｜狭小地を活用したリーズナブルな戸建で急成長。" },
-    { genre: "フォーブス日本2025", name: "金沢一家", date: "", desc: "28位 三洋物産｜「海物語」シリーズなどメガヒット機種を持つメーカー。" },
-    { genre: "フォーブス日本2025", name: "加藤功夫", date: "", desc: "29位 カカクコム／デジタルガレージ｜「価格.com」「食べログ」を運営するネット企業の主要創業者。" },
     { genre: "フォーブス日本2025", name: "杉浦広一", date: "1950/07/22", desc: "30位 スギHD｜「スギ薬局」を展開する大手一族。" },
     { genre: "フォーブス日本2024", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜ユニクロを世界展開。安定成長で日本首位を維持。" },
     { genre: "フォーブス日本2024", name: "孫正義", date: "1957/08/11", desc: "2位 ソフトバンクグループ｜ビジョン・ファンドでハイテク企業へ大規模投資。" },
@@ -3096,9 +3154,7 @@
     { genre: "フォーブス日本2024", name: "小川一維（一族）", date: "1977/10/19", desc: "17位 ゼンショーHD｜「すき家」等を擁する日本最大の外食グループ。" },
     { genre: "フォーブス日本2024", name: "上月景正", date: "1940/11/12", desc: "18位 コナミグループ｜ゲーム開発からスポーツクラブ運営へ拡大。" },
     { genre: "フォーブス日本2024", name: "永守重信", date: "1944/08/28", desc: "19位 ニデック（日本電産）｜小型モーターから車載用まで展開する世界シェア1位。" },
-    { genre: "フォーブス日本2024", name: "島野容三", date: "", desc: "20位 シマノ｜世界の自転車部品で圧倒的シェアを持つ。" },
     { genre: "フォーブス日本2024", name: "多田勝美", date: "1945/07/12", desc: "21位 大東建託｜独自の賃貸住宅一括管理で成長。" },
-    { genre: "フォーブス日本2024", name: "内山庄三郎（一族）", date: "", desc: "22位 レーザーテック｜EUVマスク検査装置を独占製造。" },
     { genre: "フォーブス日本2024", name: "森佳子（一族）", date: "1940/07/13", desc: "23位 森ビル｜「アークヒルズ」「六本木ヒルズ」等の都市開発を手掛ける。" },
     { genre: "フォーブス日本2024", name: "福嶋康博", date: "1947/08/18", desc: "24位 スクウェア・エニックス｜旧エニックスを創業し「ドラゴンクエスト」を発信。" },
     { genre: "フォーブス日本2024", name: "宇野正晃", date: "1947/05/18", desc: "25位 コスモス薬品｜調剤を強みとした小商圏型の格安ドラッグストア。" },
@@ -3106,7 +3162,6 @@
     { genre: "フォーブス日本2024", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "27位 アパグループ｜一代で「APAホテル」の巨大ネットワークを構築。" },
     { genre: "フォーブス日本2024", name: "石原崇匡（一族）", date: "1978/07/26", desc: "28位 平和｜パチンコ機器開発およびゴルフ場（PGM）の運営。" },
     { genre: "フォーブス日本2024", name: "杉浦広一", date: "1950/07/22", desc: "29位 スギHD｜調剤併設型の「スギ薬局」で地域医療密着型店舗を展開。" },
-    { genre: "フォーブス日本2024", name: "金沢一家", date: "", desc: "30位 三洋物産｜パチンコ業界の定番「海物語」シリーズを開発。" },
     { genre: "フォーブス日本2023", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜円安による海外ユニクロの利益押し上げで日本首位を独走。" },
     { genre: "フォーブス日本2023", name: "滝崎武光", date: "1945/06/10", desc: "2位 キーエンス｜超ハイリターンな工場用センサー。孫氏を抜き2位に。" },
     { genre: "フォーブス日本2023", name: "孫正義", date: "1957/08/11", desc: "3位 ソフトバンクグループ｜テック株下落やファンドの赤字で資産を減らし3位。" },
@@ -3128,15 +3183,11 @@
     { genre: "フォーブス日本2023", name: "多田勝美", date: "1945/07/12", desc: "19位 大東建託｜土地活用スキームでアパマン建築・管理の王座を維持。" },
     { genre: "フォーブス日本2023", name: "福嶋康博", date: "1947/08/18", desc: "20位 スクウェア・エニックス｜旧エニックス創業者。ドラクエ等の強力なIPを保有。" },
     { genre: "フォーブス日本2023", name: "宇野正晃", date: "1947/05/18", desc: "21位 コスモス薬品｜「フード＆ドラッグ」戦略で業界トップクラスの効率。" },
-    { genre: "フォーブス日本2023", name: "島野容三", date: "", desc: "22位 シマノ｜自転車ブーム後も高いシェアを誇る自転車部品大手。" },
-    { genre: "フォーブス日本2023", name: "内山庄三郎（一族）", date: "", desc: "23位 レーザーテック｜最先端半導体向け検査装置が世界で絶賛され資産高騰。" },
     { genre: "フォーブス日本2023", name: "森佳子（一族）", date: "1940/07/13", desc: "24位 森ビル｜2023年開業の「麻布台ヒルズ」など大規模再開発を推進。" },
     { genre: "フォーブス日本2023", name: "石原崇匡（一族）", date: "1978/07/26", desc: "25位 平和｜パチンコ事業とゴルフ場PGMの運営が安定収益に。" },
     { genre: "フォーブス日本2023", name: "杉浦広一", date: "1950/07/22", desc: "26位 スギHD｜調剤とドラッグの融合型店舗でシニア層を囲い込む。" },
     { genre: "フォーブス日本2023", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "27位 アパグループ｜コロナ禍中も手を止めずホテルを開業し続けた。" },
-    { genre: "フォーブス日本2023", name: "金沢一家", date: "", desc: "28位 三洋物産｜定番「海物語」の版権・製造を独占。" },
     { genre: "フォーブス日本2023", name: "荒井正昭", date: "1965/12/17", desc: "29位 オープンハウスグループ｜都心のリーズナブルな戸建てという鉱脈を発掘。" },
-    { genre: "フォーブス日本2023", name: "襟川陽一・恵子", date: "", desc: "30位 コーエーテクモHD｜ゲーム開発と恵子会長の優れた資金運用の二馬力。" },
     { genre: "フォーブス日本2022", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜ソフトバンク株下落で日本首位に再び返り咲く。" },
     { genre: "フォーブス日本2022", name: "滝崎武光", date: "1945/06/10", desc: "2位 キーエンス｜超高収益構造で資産が安定し2位に躍進。" },
     { genre: "フォーブス日本2022", name: "孫正義", date: "1957/08/11", desc: "3位 ソフトバンクグループ｜ハイテク株暴落でビジョンファンドが苦戦し3位へ。" },
@@ -3156,16 +3207,12 @@
     { genre: "フォーブス日本2022", name: "多田勝美", date: "1945/07/12", desc: "17位 大東建託｜建築から一括管理までパッケージ化した不動産モデル。" },
     { genre: "フォーブス日本2022", name: "福嶋康博", date: "1947/08/18", desc: "18位 スクウェア・エニックス｜旧エニックス創業者。ドラクエの強いライセンス収入。" },
     { genre: "フォーブス日本2022", name: "宇野正晃", date: "1947/05/18", desc: "19位 コスモス薬品｜食品をフックにした独自のドラッグストア包囲網。" },
-    { genre: "フォーブス日本2022", name: "島野容三", date: "", desc: "20位 シマノ｜自転車ブームの恩恵を最大級に受ける。" },
-    { genre: "フォーブス日本2022", name: "襟川陽一・恵子", date: "", desc: "21位 コーエーテクモHD｜歴史ゲームと恵子氏の資産運用のハイブリッド。" },
     { genre: "フォーブス日本2022", name: "石原崇匡（一族）", date: "1978/07/26", desc: "22位 平和｜パチンコ機の製造とゴルフ場PGMの運営。" },
     { genre: "フォーブス日本2022", name: "杉浦広一", date: "1950/07/22", desc: "23位 スギHD｜調剤併設型に特化し処方箋ビジネスを強化。" },
     { genre: "フォーブス日本2022", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "24位 アパグループ｜コロナ禍中も逆張りでホテルを大量開業。" },
-    { genre: "フォーブス日本2022", name: "金沢一家", date: "", desc: "25位 三洋物産｜大ヒットパチンコ機「海物語」の権利を独占。" },
     { genre: "フォーブス日本2022", name: "荒井正昭", date: "1965/12/17", desc: "26位 オープンハウスグループ｜低金利と住宅需要を追い風に都心の新築戸建を販売。" },
     { genre: "フォーブス日本2022", name: "安田隆夫", date: "1949/05/07", desc: "27位 パン・パシフィック・インターナショナル｜国内ドンキの深夜営業等で健闘。" },
     { genre: "フォーブス日本2022", name: "関家一馬（一族）", date: "1974/10/14", desc: "28位 ディスコ｜半導体用切断装置の需要が高まり一族の資産が上昇。" },
-    { genre: "フォーブス日本2022", name: "内山庄三郎（一族）", date: "", desc: "29位 レーザーテック｜EUV向け検査装置の事実上の世界独占で株価急騰。" },
     { genre: "フォーブス日本2022", name: "森佳子（一族）", date: "1940/07/13", desc: "30位 森ビル｜虎ノ門・麻布台エリアの都市開発に向け資産を運用。" },
     { genre: "フォーブス日本2021", name: "孫正義", date: "1957/08/11", desc: "1位 ソフトバンクグループ｜前年から資産を倍以上に増やし日本1位に返り咲き。" },
     { genre: "フォーブス日本2021", name: "柳井正", date: "1949/02/07", desc: "2位 ファーストリテイリング｜約90%資産を増やすも孫氏の猛追を受け2位に。" },
@@ -3188,13 +3235,10 @@
     { genre: "フォーブス日本2021", name: "多田勝美", date: "1945/07/12", desc: "19位 大東建託｜賃貸住宅の建築請負と一括管理の安定収益。" },
     { genre: "フォーブス日本2021", name: "福嶋康博", date: "1947/08/18", desc: "20位 スクウェア・エニックス｜エニックス創業者として保有株式が上昇。" },
     { genre: "フォーブス日本2021", name: "宇野正晃", date: "1947/05/18", desc: "21位 コスモス薬品｜「安い食品」で客を呼ぶ郊外型の巨大ドラッグ戦略。" },
-    { genre: "フォーブス日本2021", name: "島野容三", date: "", desc: "22位 シマノ｜密を避ける移動・スポーツとしての自転車ブームで成長。" },
     { genre: "フォーブス日本2021", name: "鈴木敏文", date: "1932/12/01", desc: "23位 セブン＆アイHD｜セブン-イレブンを日本に定着させた流通の神様。" },
     { genre: "フォーブス日本2021", name: "杉浦広一", date: "1950/07/22", desc: "24位 スギHD｜調剤併設で高齢化社会に密着した安定ビジネス。" },
     { genre: "フォーブス日本2021", name: "山田進太郎", date: "1977/09/21", desc: "25位 メルカリ｜断捨離ブームで利用者急増、資産増加率で日本1位に。" },
-    { genre: "フォーブス日本2021", name: "襟川陽一・恵子", date: "", desc: "26位 コーエーテクモHD｜スマホゲーム好調に加え恵子氏の株式運用が話題に。" },
     { genre: "フォーブス日本2021", name: "石原崇匡（一族）", date: "1978/07/26", desc: "27位 平和｜パチンコ機製造とゴルフ場PGMの経営。" },
-    { genre: "フォーブス日本2021", name: "金沢一家", date: "", desc: "28位 三洋物産｜ホール定番「海物語」シリーズを製造。" },
     { genre: "フォーブス日本2021", name: "小川一維（一族）", date: "1977/10/19", desc: "29位 ゼンショーHD｜「すき家」等でテイクアウト需要を捉え外食で奮闘。" },
     { genre: "フォーブス日本2021", name: "森佳子（一族）", date: "1940/07/13", desc: "30位 森ビル｜「六本木ヒルズ」等の管理と次の大規模再開発の仕込み。" },
     { genre: "フォーブス日本2020", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜店舗休業の打撃を部屋着需要等で耐え首位キープ。" },
@@ -3224,9 +3268,7 @@
     { genre: "フォーブス日本2020", name: "土屋嘉雄（一族）", date: "1932/05/18", desc: "25位 ワークマン／カインズ｜「ワークマンプラス」のブームで初のトップ30入り。" },
     { genre: "フォーブス日本2020", name: "元谷外志雄（一族）", date: "1943/06/03", desc: "26位 アパグループ｜逆風下でも低価格・大量出店戦略と自己資金力で維持。" },
     { genre: "フォーブス日本2020", name: "荒井正昭", date: "1965/12/17", desc: "27位 オープンハウスグループ｜コロナ下の住宅見直し需要を掴む戸建て販売。" },
-    { genre: "フォーブス日本2020", name: "襟川陽一・恵子", date: "", desc: "28位 コーエーテクモHD｜『あつ森』の共同開発や自社タイトルのヒット。" },
     { genre: "フォーブス日本2020", name: "石原崇匡（一族）", date: "1978/07/26", desc: "29位 平和｜パチンコ機製造とゴルフ場PGM経営。一族でランクイン。" },
-    { genre: "フォーブス日本2020", name: "島野容三", date: "", desc: "30位 シマノ｜世界的な自転車ブームが始動。" },
     { genre: "フォーブス日本2019", name: "柳井正", date: "1949/02/07", desc: "1位 ファーストリテイリング｜ユニクロ世界進出加速で2年ぶり日本首位。" },
     { genre: "フォーブス日本2019", name: "孫正義", date: "1957/08/11", desc: "2位 ソフトバンクグループ｜ビジョン・ファンドを率いるも株価下落で2位。" },
     { genre: "フォーブス日本2019", name: "滝崎武光", date: "1945/06/10", desc: "3位 キーエンス｜FA需要の高まりで安定の3位。" },
@@ -4577,6 +4619,7 @@
 
   function updateAdminUI(email) {
     const isAdmin = (email || "").toLowerCase() === ADMIN_EMAIL;
+    isLibAdmin = isAdmin;
     const tabBtn = document.getElementById("tab-library");
     if (tabBtn) tabBtn.style.display = isAdmin ? "" : "none";
     const compatTab = document.getElementById("tab-compat");
@@ -4612,7 +4655,7 @@
   }
 
   // 図書館のカード(診断結果と同じコンパクトな見た目)。cが無い(生年月日不確か)人は診断を省く。
-  function libraryCardHtml(name, dateStr, desc, c, lazyIdx, isCustom) {
+  function libraryCardHtml(name, dateStr, desc, c, lazyIdx, isCustom, libKey, genre) {
     // 詳細(重いHTML)は開いた時に生成する(1200人分を毎回作るとレンダリングが数秒かかるため)
     const detail = (lazyIdx !== undefined)
       ? `<details class="rc-detail lib-lazy" data-lidx="${lazyIdx}"><summary>詳細</summary><div class="rc-detail-body"></div></details>`
@@ -4639,9 +4682,23 @@
           <span class="rc-name">${escapeHtml(name)}</span>${isCustom ? '<span class="lib-custom-tag">追加分</span>' : ""}
           <span class="rc-birth">${escapeHtml(dateStr || "生没年不詳")}</span>
         </div>
-        ${isCustom ? `<div class="head-btns"><button class="del-btn lib-del-btn" data-name="${escapeHtml(name)}" data-date="${escapeHtml(dateStr)}" title="図書館から削除">×</button></div>` : ""}
+        ${libKey && isLibAdmin ? `<div class="head-btns">
+          <button class="lib-edit-btn" data-lkey="${escapeHtml(libKey)}" title="この人を編集">✏️</button>
+          <button class="del-btn lib-del-btn" data-lkey="${escapeHtml(libKey)}" data-name="${escapeHtml(name)}" title="図書館から削除">×</button>
+        </div>` : ""}
       </div>
       ${desc ? `<div class="lib-desc">${escapeHtml(desc)}</div>` : ""}
+      ${libKey && isLibAdmin ? `<div class="lib-edit-form" hidden>
+        <div class="lib-edit-row"><label>名前</label><input type="text" class="lib-ed-name" value="${escapeHtml(name)}"></div>
+        <div class="lib-edit-row"><label>生年月日</label><input type="text" class="lib-ed-date" value="${escapeHtml(dateStr || "")}" placeholder="1990/06/24"></div>
+        <div class="lib-edit-row"><label>ジャンル</label><input type="text" class="lib-ed-genre" value="${escapeHtml(genre || "")}" list="lib-genre-list"></div>
+        <div class="lib-edit-row"><label>備考</label><textarea class="lib-ed-desc" rows="2" placeholder="どんな人かのメモ">${escapeHtml(desc || "")}</textarea></div>
+        <div class="lib-edit-actions">
+          <button class="btn-primary lib-ed-save" data-lkey="${escapeHtml(libKey)}">保存する</button>
+          <button class="btn-secondary lib-ed-cancel">やめる</button>
+          <span class="hint lib-ed-status"></span>
+        </div>
+      </div>` : ""}
       ${diag}
     </div>`;
   }
@@ -4659,13 +4716,31 @@
   let libraryMatchedRef = []; // 遅延詳細の参照先(表示中の人物)
   // のりぴさんがアプリから追加した図書館人物(Firestore config/library に保存)
   let libraryExtra = [];
-  function allLibraryPeople() { return libraryExtra.length ? LIBRARY_PEOPLE.concat(libraryExtra) : LIBRARY_PEOPLE; }
+  let isLibAdmin = false; // 管理者(のりぴさん)のときだけ図書館の編集ボタンを出す
+  let libraryOverrides = {}; // { 元キー: {name,date,genre,desc} } 既存人物の編集内容
+  let libraryHidden = [];    // [元キー] 既存人物のうち非表示(削除)にしたもの
+  // 元データ1件を一意に識別するキー(編集しても変わらないよう「元の値」で作る)
+  function libKeyOf(p) { return [p.genre, p.name, p.date].join("|"); }
+  function allLibraryPeople() {
+    const base = [];
+    for (const p of LIBRARY_PEOPLE) {
+      const key = libKeyOf(p);
+      if (libraryHidden.indexOf(key) >= 0) continue;
+      const ov = libraryOverrides[key];
+      base.push(ov ? { ...p, ...ov, _key: key, edited: true } : { ...p, _key: key });
+    }
+    for (const p of libraryExtra) base.push(p);
+    return base;
+  }
   async function loadLibraryExtra() {
     const fs = window.metaqFirestore;
     if (!fs || !fs.getLibraryConfig) return;
     try {
-      const people = await fs.getLibraryConfig();
-      libraryExtra = (people || []).map(p => ({ ...p, custom: true }));
+      const cfg = await fs.getLibraryConfig();
+      const people = Array.isArray(cfg) ? cfg : (cfg.people || []); // 旧形式(配列)も読める
+      libraryExtra = people.map((p, i) => ({ ...p, custom: true, _key: "custom:" + i }));
+      libraryOverrides = (Array.isArray(cfg) ? {} : cfg.overrides) || {};
+      libraryHidden = (Array.isArray(cfg) ? [] : cfg.hidden) || [];
       const sel = document.getElementById("library-agg-genre");
       if (sel) delete sel.dataset.ready;
       renderLibraryGenreSelect();
@@ -4675,7 +4750,38 @@
   async function saveLibraryExtra() {
     const fs = window.metaqFirestore;
     if (!fs || !fs.saveLibraryConfig) throw new Error("保存先に接続できません");
-    await fs.saveLibraryConfig(libraryExtra.map(({ custom, ...p }) => p));
+    await fs.saveLibraryConfig(
+      libraryExtra.map(({ custom, _key, ...p }) => p),
+      libraryOverrides,
+      libraryHidden
+    );
+  }
+  // 1件を編集して保存(既存はoverridesへ、追加分は本体を書き換え)
+  async function libraryEditSave(key, patch) {
+    if (String(key).startsWith("custom:")) {
+      const idx = +String(key).split(":")[1];
+      if (!libraryExtra[idx]) throw new Error("対象が見つかりません");
+      libraryExtra[idx] = { ...libraryExtra[idx], ...patch };
+    } else {
+      libraryOverrides[key] = { ...(libraryOverrides[key] || {}), ...patch };
+    }
+    await saveLibraryExtra();
+    libCalcCache.clear();
+    renderLibraryGenreChips();
+    renderLibrary();
+  }
+  // 1件を削除(既存はhiddenへ、追加分は配列から除去)
+  async function libraryDeleteOne(key) {
+    if (String(key).startsWith("custom:")) {
+      const idx = +String(key).split(":")[1];
+      libraryExtra.splice(idx, 1);
+      libraryExtra = libraryExtra.map((p, i) => ({ ...p, _key: "custom:" + i }));
+    } else if (libraryHidden.indexOf(key) < 0) {
+      libraryHidden.push(key);
+    }
+    await saveLibraryExtra();
+    renderLibraryGenreChips();
+    renderLibrary();
   }
   // 重複チェック(・/スペース無視の同名+同生年月日)
   function libraryDuplicate(name, date) {
@@ -4740,18 +4846,9 @@
     const term = (document.getElementById("library-search")?.value || "").trim().toLowerCase();
     let matched = allLibraryPeople().filter(p => libraryGenreFilter === "all" || p.genre === libraryGenreFilter);
     if (term) matched = matched.filter(p => {
-      if (p.name.toLowerCase().includes(term) || (p.desc || "").toLowerCase().includes(term)) return true;
-      // 柱別検索(本質ライオン・意思胎など)は計算結果からも探す
-      if (/^(本質|表面|意思|時柱)/.test(term)) {
-        const c = libCalc(p.date);
-        if (c && pillarSearchTokens(c).some(tk => tk.toLowerCase().includes(term))) return true;
-      }
-      // 60タイプコード検索(9P・12cなど)
-      if (/^([1-9]|1[0-2])[casmp]$/.test(term)) {
-        const c = libCalc(p.date);
-        if (c && c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1] && SIXTY_TYPES[c.bunrui60 - 1].code.toLowerCase() === term) return true;
-      }
-      return false;
+      const c = libCalc(p.date);
+      const hay = [p.name, p.desc, p.genre, p.date, ...calcSearchTokens(c, p.date)].filter(Boolean).join(" ").toLowerCase();
+      return matchesSearch(term, hay, c);
     });
 
     let html = `<div class="hint" style="margin-bottom:14px;">
@@ -4774,7 +4871,7 @@
       byGenre[genre].forEach(p => {
         const c = libCalc(p.date);
         const idx = libraryMatchedRef.push({ name: p.name, calc: c }) - 1;
-        html += libraryCardHtml(p.name, p.date, p.desc, c, idx, p.custom);
+        html += libraryCardHtml(p.name, p.date, p.desc, c, idx, p.custom, p._key, p.genre);
       });
       html += `</div>`;
     });
@@ -4986,23 +5083,66 @@
       if (status) status.textContent = `✅ 「${name}」を${genre}に追加しました`;
       showToast("図書館に追加しました");
     });
-    // 図書館 - 追加分の削除(委譲・確認つき)
+    // 図書館 - 編集/削除(委譲・全員が対象)
     document.getElementById("library-content")?.addEventListener("click", async (e) => {
+      // ✏️ 編集フォームを開く
+      const edit = e.target.closest(".lib-edit-btn");
+      if (edit) {
+        const card = edit.closest(".result-card");
+        const form = card && card.querySelector(".lib-edit-form");
+        if (form) { form.hidden = !form.hidden; if (!form.hidden) form.querySelector(".lib-ed-name")?.focus(); }
+        return;
+      }
+      // やめる
+      if (e.target.closest(".lib-ed-cancel")) {
+        const form = e.target.closest(".lib-edit-form");
+        if (form) form.hidden = true;
+        return;
+      }
+      // 保存する
+      const save = e.target.closest(".lib-ed-save");
+      if (save) {
+        const form = save.closest(".lib-edit-form");
+        const status = form.querySelector(".lib-ed-status");
+        const patch = {
+          name: form.querySelector(".lib-ed-name").value.trim(),
+          date: form.querySelector(".lib-ed-date").value.trim(),
+          genre: form.querySelector(".lib-ed-genre").value.trim(),
+          desc: form.querySelector(".lib-ed-desc").value.trim(),
+        };
+        if (!patch.name) { status.textContent = "名前を入れてください"; return; }
+        if (patch.date && !/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(patch.date)) { status.textContent = "生年月日は 1990/06/24 の形式で"; return; }
+        if (patch.date) {
+          const dp = patch.date.split("/").map(Number);
+          if (!isValidYmd(dp[0], dp[1], dp[2])) { status.textContent = "その日付は存在しません"; return; }
+        }
+        if (!patch.genre) { status.textContent = "ジャンルを入れてください"; return; }
+        save.disabled = true; status.textContent = "保存中…";
+        try {
+          await libraryEditSave(save.dataset.lkey, patch);
+          showToast(`「${patch.name}」を更新しました`);
+        } catch (err) { console.error(err); status.textContent = "保存に失敗しました"; save.disabled = false; }
+        return;
+      }
+      // × 削除
       const btn = e.target.closest(".lib-del-btn");
       if (!btn) return;
-      const nm = btn.dataset.name, dt = btn.dataset.date;
+      const nm = btn.dataset.name;
       if (!confirm(`「${nm}」を図書館から削除します。\nこの操作は取り消せません。本当に削除してよいですか？`)) return;
-      const i = libraryExtra.findIndex(p => p.name === nm && p.date === dt);
-      if (i === -1) return;
-      const removed = libraryExtra.splice(i, 1)[0];
-      try { await saveLibraryExtra(); }
-      catch (err) { console.error(err); libraryExtra.splice(i, 0, removed); showToast("削除に失敗しました"); return; }
-      const sel = document.getElementById("library-agg-genre");
-      if (sel) delete sel.dataset.ready;
-      renderLibraryGenreSelect();
-      renderLibrary();
-      showToast(`「${nm}」を図書館から削除しました`);
+      try { await libraryDeleteOne(btn.dataset.lkey); showToast(`「${nm}」を図書館から削除しました`); }
+      catch (err) { console.error(err); showToast("削除に失敗しました"); }
     });
+    // 検索ヒントのチップをクリック → その言葉で検索する
+    document.addEventListener("click", (e) => {
+      const chip = e.target.closest(".search-chip");
+      if (!chip) return;
+      const inLib = !!chip.closest("#panel-library");
+      const input = document.getElementById(inLib ? "library-search" : "results-search");
+      if (!input) return;
+      input.value = chip.textContent.trim();
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
     renderLibGenreDatalist();
 
     // 図書館 - 詳細の遅延生成(「詳細」を開いた時に初めて中身を作る)

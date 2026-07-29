@@ -333,12 +333,17 @@ async function saveAccessConfig(cfg) {
 async function getLibraryConfig() {
   try {
     const snap = await getDoc(doc(db, "config", "library"));
-    return snap.exists() ? ((snap.data() || {}).people || []) : [];
-  } catch (e) { console.error(e); return []; }
+    if (!snap.exists()) return { people: [], overrides: {}, hidden: [] };
+    const d = snap.data() || {};
+    return { people: d.people || [], overrides: d.overrides || {}, hidden: d.hidden || [] };
+  } catch (e) { console.error(e); return { people: [], overrides: {}, hidden: [] }; }
 }
-async function saveLibraryConfig(people) {
+// people=のりぴさんが追加した人 / overrides=既存人物の編集内容 / hidden=非表示にした既存人物
+async function saveLibraryConfig(people, overrides, hidden) {
   await setDoc(doc(db, "config", "library"), {
     people: Array.isArray(people) ? people : [],
+    overrides: overrides && typeof overrides === "object" ? overrides : {},
+    hidden: Array.isArray(hidden) ? hidden : [],
     updatedAt: Date.now()
   });
 }
