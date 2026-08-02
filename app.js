@@ -836,14 +836,23 @@
     return null;
   }
 
+  // 空白・中黒を無視した形にそろえる(「松下 展平」を「松下展平」で探せるように)
+  function flattenForSearch(s) { return String(s || "").replace(/[\s\u3000・·･‐-‒–—ー]/g, ""); }
+
   // 1件が検索語すべて(スペース区切りAND)にマッチするか
   function matchesSearch(term, haystack, calc) {
     const words = String(term || "").trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
     if (!words.length) return true;
+    let flat = null; // 使うときだけ作る
     return words.every(w => {
       const fk = fukuQueryMatch(w, calc && calc.fukuNoKami);
       if (fk !== null) return fk;
-      return haystack.indexOf(w) >= 0;
+      if (haystack.indexOf(w) >= 0) return true;
+      // 名前を続けて打った場合(松下展平・マイクタイソン)も拾う
+      const fw = flattenForSearch(w);
+      if (!fw) return false;
+      if (flat === null) flat = flattenForSearch(haystack);
+      return flat.indexOf(fw) >= 0;
     });
   }
 
@@ -1354,10 +1363,25 @@
     }
     actions.style.display = "flex";
     if (filtered.length === 0) {
+      // なぜ0件なのかを見せる(条件の付けっぱなしで「検索できない」と誤解しやすいため)
+      const conds = [];
+      if (filterVal !== "all") {
+        const g = getGroupById(filterVal);
+        conds.push("グループ：" + escapeHtml(filterVal === "none" ? "未設定のみ" : (g ? g.name : filterVal)));
+      }
+      String(term || "").trim().split(/[\s　]+/).filter(Boolean).forEach(w => conds.push("検索：" + escapeHtml(w)));
       list.innerHTML = `<div class="empty-state">
         <div class="emoji">🔍</div>
         <p>${term ? "該当する人が見つかりません。" : "このグループには診断結果がありません。"}</p>
+        ${conds.length ? `<div class="empty-conds">いま効いている条件（${conds.length}個）<br>${conds.map(c => `<span class="empty-cond">${c}</span>`).join("")}</div>
+        <button class="btn-secondary" id="results-clear-all">条件をぜんぶ消して全員を表示</button>` : ""}
       </div>`;
+      document.getElementById("results-clear-all")?.addEventListener("click", () => {
+        const s = document.getElementById("results-search"); if (s) s.value = "";
+        const gf = document.getElementById("results-group-filter"); if (gf) gf.value = "all";
+        renderResults();
+        document.getElementById("results-filter")?._syncAll?.();
+      });
       return;
     }
     // 編集中に再描画(他端末の更新やグループ変更の反映)が起きても、
@@ -5066,7 +5090,19 @@
       if (note) html += `<div class="lib-note">📝 ${escapeHtml(fbm[2])}年・${escapeHtml(fbm[1])}：${escapeHtml(note)}</div>`;
     }
     if (matched.length === 0) {
-      container.innerHTML = html + `<div class="empty-state"><div class="emoji">🔍</div><p>該当する人物が見つかりません。</p></div>`;
+      const conds2 = [];
+      if (libraryGenreFilter !== "all") conds2.push("ジャンル：" + escapeHtml(libraryGenreFilter));
+      String(term || "").trim().split(/[\s　]+/).filter(Boolean).forEach(w => conds2.push("検索：" + escapeHtml(w)));
+      container.innerHTML = html + `<div class="empty-state"><div class="emoji">🔍</div><p>該当する人物が見つかりません。</p>
+        ${conds2.length ? `<div class="empty-conds">いま効いている条件（${conds2.length}個）<br>${conds2.map(c => `<span class="empty-cond">${c}</span>`).join("")}</div>
+        <button class="btn-secondary" id="library-clear-all">条件をぜんぶ消して全員を表示</button>` : ""}</div>`;
+      document.getElementById("library-clear-all")?.addEventListener("click", () => {
+        const s = document.getElementById("library-search"); if (s) s.value = "";
+        libraryGenreFilter = "all";
+        renderLibraryGenreChips();
+        renderLibrary();
+        document.getElementById("library-filter")?._syncAll?.();
+      });
       return;
     }
     const byGenre = {};
