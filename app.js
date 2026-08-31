@@ -3718,7 +3718,7 @@
     const tierColor = p => p >= 20 ? "#43a047" : p >= 12 ? "#1e88e5" : p >= 6 ? "#fb8c00" : "#e53980";
     return `<div class="card">
       <h2>発生率📊</h2>
-      <div class="hint" style="margin-bottom:12px;">27通りの宿の組み合わせのうち、各コードが何通りを占めるか＝その相性の出やすさです。色が濃い緑ほど出やすく、ピンクほどレアです。</div>
+      <div class="hint" style="margin-bottom:12px;">27通りの宿の組み合わせのうち、各コードが何通りを占めるか＝その相性の出やすさです。色が濃い緑ほど出やすく、ピンクほどレアです。バーの下の「＋◯」は、自分の宿から相手の宿まで何個進むか（＝この相性になる宿の距離）です。</div>
       ${rows.map(r => { const col = tierColor(r.p); return `<div class="prob-row">
         <div class="prob-line"><span class="compat-code">${r.c}</span><b class="prob-val" style="color:${col}">${r.p.toFixed(1)}%</b><span class="prob-head">${escapeHtml(info[r.c] ? info[r.c].headline : "")}</span></div>
         <div class="prob-bar-track"><span class="prob-bar-fill" style="width:${(r.p / max * 100).toFixed(1)}%; background:${col}"></span></div>
@@ -3885,7 +3885,14 @@
       html += compatProbHtml();
       html += `<div class="card">
         <h2>📖 相性コードA〜N 解説</h2>
-        <div class="hint" style="margin-bottom:10px;">画面に出る相性コードの意味です。</div>`;
+        <div class="hint" style="margin-bottom:10px;">画面に出る相性コードの意味です。</div>
+        <div class="code-shuku" style="margin-bottom:12px;">
+          <b>「＋18（胎）」ってなに？</b><br>
+          27宿は輪になって並んでいます。<b>自分の宿から相手の宿まで何個進むか</b>を数えたのが「＋◯」です。<br>
+          たとえば井宿の人から見て室宿の人は18個先なので「＋18」。その距離には昔から「胎」という名前がついています。<br>
+          カッコの中は伝統的な宿曜の関係名で、<b>栄・衰・安・危・成・壊・友・親</b>の8つが3周ぶんあり、周の変わり目に<b>命（0）・業（9）・胎（18）</b>が入ります。「近・中・遠」は何周目かを表しています。<br>
+          <b>この距離から相性コードが決まります</b>。＋18（胎）は途中の計算で、答えはコードのほうです。
+        </div>`;
       html += COMPAT_CODES.map(c => `
         <details class="rc-detail compat-item">
           <summary><span class="compat-code">${c.code}</span>${escapeHtml(c.headline)}<small>〜${escapeHtml(c.sub)}〜</small></summary>
