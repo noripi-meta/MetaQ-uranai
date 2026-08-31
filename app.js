@@ -3595,6 +3595,16 @@
   // 自分dateA→相手dateB の相性
   function compatBetween(dateA, dateB){ const A=shukuOf(dateA), B=shukuOf(dateB); if(!A||!B)return null; const offset=((B.idx-A.idx)%27+27)%27; return { A, B, offset, code: ISD_OFFSET_CODE[offset]||null, refRel: SENJUTSU_REL[offset]+ringLabel(offset) }; }
 
+  // 相性コード → 該当する宿差の一覧（伝統宿曜の関係名つき）。「このコードはどの宿の関係か」の表示用
+  function relName(o) { const r = SENJUTSU_REL[o]; const g = (o === 0 || o === 9 || o === 18) ? "" : (o < 9 ? "近" : (o < 18 ? "中" : "遠")); return g ? r + "・" + g : r; }
+  function offsetText(o) { return o === 0 ? "同じ宿（命）" : ("＋" + o + "（" + relName(o) + "）"); }
+  function codeOffsetList(code) { const o = []; for (let i = 0; i < 27; i++) if (ISD_OFFSET_CODE[i] === code) o.push(i); return o; }
+  function codeOffsetText(code) { const l = codeOffsetList(code); return l.length ? l.map(offsetText).join("　") : "—"; }
+  // 自分の宿から o つ進んだ宿の名前
+  function shukuAfter(shuku, o) { const i = SHUKU_27.indexOf(shuku); return i < 0 ? "" : SHUKU_27[(i + o) % 27]; }
+  // 「自分が◯宿なら、このコードの相手は◯宿・◯宿」
+  function codePartnersFrom(code, myShuku) { return codeOffsetList(code).map(o => shukuAfter(myShuku, o) + "宿").join("・"); }
+
   // ---------- 相性ガイド（宿曜27宿＋相性コードA〜N） ----------
   const SHUKU_MASTER = [
     { id: 1, name: "角宿", yomi: "かく", group: "東方青龍" },
@@ -3712,6 +3722,7 @@
       ${rows.map(r => { const col = tierColor(r.p); return `<div class="prob-row">
         <div class="prob-line"><span class="compat-code">${r.c}</span><b class="prob-val" style="color:${col}">${r.p.toFixed(1)}%</b><span class="prob-head">${escapeHtml(info[r.c] ? info[r.c].headline : "")}</span></div>
         <div class="prob-bar-track"><span class="prob-bar-fill" style="width:${(r.p / max * 100).toFixed(1)}%; background:${col}"></span></div>
+        <div class="prob-offs">${escapeHtml(codeOffsetText(r.c))}</div>
       </div>`; }).join("")}
       <div class="prob-legend">
         <span><i style="background:#43a047"></i>出やすい</span>
@@ -3778,7 +3789,7 @@
     const r = compatBetween(aStr, bStr);
     if (!r) return `<div class="compat-dir err">${label}：生年月日が読み取れませんでした（1900〜2099年、例 1990/06/24）</div>`;
     const codeInfo = r.code ? COMPAT_BY_CODE()[r.code] : null;
-    const shukuLine = `<div class="compat-shuku"><b>${escapeHtml(r.A.shuku)}宿</b> <span class="compat-arrow">→</span> <b>${escapeHtml(r.B.shuku)}宿</b></div>`;
+    const shukuLine = `<div class="compat-shuku"><b>${escapeHtml(r.A.shuku)}宿</b> <span class="compat-arrow">→</span> <b>${escapeHtml(r.B.shuku)}宿</b><span class="compat-off">${escapeHtml(offsetText(r.offset))}</span></div>`;
     if (codeInfo) {
       return `<div class="compat-dir">
         <div class="compat-dir-head">${label}</div>
@@ -3834,15 +3845,17 @@
       if (p.date === baseDate) return; // 本人は除外
       const r = compatBetween(baseDate, p.date);
       if (!r || !r.code) return;
-      (byCode[r.code] = byCode[r.code] || []).push(p);
+      (byCode[r.code] = byCode[r.code] || []).push({ name: p.name, shuku: r.B.shuku, offset: r.offset });
     });
     const codes = Object.keys(byCode).sort();
     if (!codes.length) { out.innerHTML = `<div class="hint">相性を計算できる相手がいませんでした。</div>`; return; }
     const info = COMPAT_BY_CODE();
-    out.innerHTML = `<div class="hint" style="margin:8px 0;">基準の人「自分」から見た相性です（逆から見ると変わる場合があります）。</div>` +
+    const baseS = shukuOf(baseDate);
+    out.innerHTML = `<div class="hint" style="margin:8px 0;">基準の人${baseS ? `（<b>${escapeHtml(baseS.shuku)}宿</b>）` : ""}から見た相性です（逆から見ると変わる場合があります）。名前の下が相手の宿です。</div>` +
       codes.map(code => `<div class="compat-list-group">
         <div class="compat-list-head"><span class="compat-code">${code}</span>${escapeHtml(info[code] ? info[code].headline : "")}</div>
-        <div class="compat-list-people">${byCode[code].map(p => `<span class="compat-list-chip">${escapeHtml(p.name)}</span>`).join("")}</div>
+        <div class="compat-list-sub">${escapeHtml(codeOffsetText(code))}${baseS ? `　→　相手は <b>${escapeHtml(codePartnersFrom(code, baseS.shuku))}</b>` : ""}</div>
+        <div class="compat-list-people">${byCode[code].map(p => `<span class="compat-list-chip">${escapeHtml(p.name)}<small class="chip-shuku">${escapeHtml(p.shuku)}宿</small></span>`).join("")}</div>
       </div>`).join("");
   }
 
@@ -3876,7 +3889,10 @@
       html += COMPAT_CODES.map(c => `
         <details class="rc-detail compat-item">
           <summary><span class="compat-code">${c.code}</span>${escapeHtml(c.headline)}<small>〜${escapeHtml(c.sub)}〜</small></summary>
-          <div class="rc-detail-body"><div class="det-row" style="line-height:1.9">${escapeHtml(c.desc)}</div></div>
+          <div class="rc-detail-body">
+            <div class="code-shuku">🌙 このコードになる宿の関係：<b>${escapeHtml(codeOffsetText(c.code))}</b></div>
+            <div class="det-row" style="line-height:1.9">${escapeHtml(c.desc)}</div>
+          </div>
         </details>`).join("");
       html += `</div>`;
       box.innerHTML = html;
