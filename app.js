@@ -384,6 +384,15 @@
     const g = TENGETSU[gi];
     return { mark: g.mark, group: g.name, groupNo: g.no, pos: pos, sub: g.subs[pos], full: g.subs[pos] + g.name };
   }
+  // 十干 → 天月式10タイプ（表＝日干、裏＝月支の本気蔵干。どちらも同じこの表で読む）
+  const TENGETSU_STEMS = "甲乙丙丁戊己庚辛壬癸";
+  function tengetsuByStem(stem) { const i = TENGETSU_STEMS.indexOf(stem); return i < 0 ? null : TENGETSU[i]; }
+  // 裏タイプ＝月支の本気（正気）蔵干をこの表で読んだもの
+  function tengetsuUraOf(monthBranch) {
+    const z = (ZOUKAN_ALL[monthBranch] || [])[0];
+    const g = tengetsuByStem(z);
+    return g ? { mark: g.mark, group: g.name, groupNo: g.no, zoukan: z, branch: monthBranch } : null;
+  }
   // グループ内の6人（No.と天月式名）
   function tengetsuSiblings(groupIdx) {
     const g = TENGETSU[groupIdx];
@@ -563,6 +572,7 @@
       bunrui60_kanGroup: bunrui60Detail.kanGroup,
       bunrui60_charaName: bunrui60Detail.charaName,
       tengetsu: tengetsuOf(bunrui60No),
+      tengetsuUra: tengetsuUraOf(JUNISHI[mbIdx]),
       fukuNoKami,
       rail,
       dayGz, monthGz, yearGz,
@@ -802,7 +812,8 @@
       if (st) push(st.code, st.kanshi, st.tsuhensei, st.hitokoto, st.omoteura);
     }
     push(c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName);
-    if (c.tengetsu) push(c.tengetsu.group, c.tengetsu.full, "天月式" + c.tengetsu.group, c.tengetsu.mark + c.tengetsu.group);
+    if (c.tengetsu) push(c.tengetsu.group, c.tengetsu.full, "天月式" + c.tengetsu.group, "表" + c.tengetsu.group);
+    if (c.tengetsuUra) push(c.tengetsuUra.group, "裏" + c.tengetsuUra.group, "天月式裏" + c.tengetsuUra.group);
     // 干支(四柱)
     push(c.yearGz, c.monthGz, c.dayGz, c.jichu && c.jichu.gz, c.dayStem, "日干" + (c.dayStem || ""));
     // レール
@@ -1183,12 +1194,16 @@
         .map(x => x.no === c.bunrui60
           ? `<b class="tg-me">${escapeHtml(x.full)}<small>No.${x.no}</small></b>`
           : `<span class="tg-sib">${escapeHtml(x.full)}<small>No.${x.no}</small></span>`).join("");
+      const u = c.tengetsuUra;
       body += `<div class="det-sec">
         <div class="det-h">🌙 天月式10タイプ</div>
-        <div class="tg-head"><span class="tg-mark">${t.mark}</span><span class="tg-group">${escapeHtml(t.group)}</span></div>
+        <div class="tg-pair">
+          <div class="tg-side tg-omote"><span class="tg-label">表</span><span class="tg-mark">${t.mark}</span><span class="tg-group">${escapeHtml(t.group)}</span></div>
+          ${u ? `<div class="tg-side tg-ura"><span class="tg-label">裏</span><span class="tg-mark">${u.mark}</span><span class="tg-group">${escapeHtml(u.group)}</span></div>` : ""}
+        </div>
         <div class="tg-full">${escapeHtml(t.full)}</div>
-        <div class="det-row det-sub-row">60分類 No.${c.bunrui60}「${escapeHtml(c.bunrui60_charaName || "")}」／${escapeHtml(t.group)}の中の${t.pos + 1}番目</div>
-        <div class="det-row" style="margin-top:6px;"><span class="det-sub">同じ${escapeHtml(t.group)}の6人</span></div>
+        <div class="det-row det-sub-row">表＝日干「${escapeHtml(c.dayStem)}」／60分類 No.${c.bunrui60}「${escapeHtml(c.bunrui60_charaName || "")}」＝${escapeHtml(t.group)}の${t.pos + 1}番目${u ? `<br>裏＝月支「${escapeHtml(u.branch)}」の蔵干「${escapeHtml(u.zoukan)}」` : ""}</div>
+        <div class="det-row" style="margin-top:6px;"><span class="det-sub">同じ${escapeHtml(t.group)}（表）の6人</span></div>
         <div class="tg-sibs">${sibs}</div>
       </div>`;
     }
@@ -1340,7 +1355,8 @@
         <span class="rc-no">No.${String(c.bunrui60).padStart(2,"0")}</span>
         ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
-        ${c.tengetsu ? `<span class="rc-tengetsu">${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
+        ${c.tengetsu ? `<span class="rc-tengetsu">表${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
+        ${c.tengetsuUra ? `<span class="rc-tengetsu rc-tengetsu-ura">裏${c.tengetsuUra.mark}${escapeHtml(c.tengetsuUra.group)}</span>` : ""}
       </div>
       <div class="rc-badges">
         ${railBadgeHtml(c.rail)}
@@ -1697,7 +1713,7 @@
   }
 
   // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
-  const RESULT_HEADERS = ["性","名","ニックネーム","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","天月式グループ","天月式タイプ","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+  const RESULT_HEADERS = ["性","名","ニックネーム","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","天月式グループ","天月式タイプ","天月式(裏)","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
   // 色付けに使う列位置は列名から求める(列を増減してもズレないように)
   const COL = {
     group: RESULT_HEADERS.indexOf("グループ名"),
@@ -1718,7 +1734,7 @@
       c.rail.rail, c.rail.tsuhensei,
       c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
       c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
-      c.tengetsu ? c.tengetsu.group : "", c.tengetsu ? c.tengetsu.full : "",
+      c.tengetsu ? c.tengetsu.group : "", c.tengetsu ? c.tengetsu.full : "", c.tengetsuUra ? c.tengetsuUra.group : "",
       GROUP_LABEL[c.honshitsu.group], c.honshitsu.animal, c.honshitsu.juniun,
       GROUP_LABEL[c.hyomen.group], c.hyomen.animal, c.hyomen.juniun,
       GROUP_LABEL[c.ishi.group], c.ishi.animal, c.ishi.juniun,
@@ -4168,7 +4184,27 @@
       icon: "🌙", menu: "天月式10タイプ", title: "天月式10タイプ ── 60分類を10グループに束ねる",
       intro: "個性心理學の60分類を、天月式では10のグループにまとめます。グループは60分類No.の「1の位」で決まり、各グループにちょうど6人ずつ入ります（10グループ × 6人 = 60）。",
       items: [
-        { type: "info", head: "🔢 グループの決まり方", body: "むずかしい計算はいりません。<b>60分類No.の1の位を見るだけ</b>です。<br><br>" +
+        { type: "info", head: "🀄 表と裏の2つがある", body: "天月式には<b>表タイプ</b>と<b>裏タイプ</b>があり、どちらも同じ10種類から出ます。見ている場所がちがうだけです。<br><br>" +
+          "<b>表＝日干</b>（生まれた「日」の十干）<br><b>裏＝月支の蔵干</b>（生まれた「節月」の中心の十干）<br><br>" +
+          "十干と10タイプは、この表で1対1に対応しています。<br>" +
+          "甲→①リーダー　乙→②ムードメイカー　丙→③スター　丁→④ロマンチスト　戊→⑤ボス<br>" +
+          "己→⑥ギバー　庚→⑦ファイター　辛→⑧カリスマ　壬→⑨パイオニア　癸→⑩フィクサー<br><br>" +
+          "つまり<b>表は「生まれた日」、裏は「生まれた季節」</b>です。裏は節切りの月で決まるので、誕生月がわかればほぼ確定します。", html: true },
+        { type: "info", head: "🌸 裏タイプ ── 節月との対応", body:
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">寅月</span><b>①リーダー</b><span class=\"tg-row-chara\">甲／2月4日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">卯月</span><b>②ムードメイカー</b><span class=\"tg-row-chara\">乙／3月6日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">辰月</span><b>⑤ボス</b><span class=\"tg-row-chara\">戊／4月5日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">巳月</span><b>③スター</b><span class=\"tg-row-chara\">丙／5月6日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">午月</span><b>④ロマンチスト</b><span class=\"tg-row-chara\">丁／6月6日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">未月</span><b>⑥ギバー</b><span class=\"tg-row-chara\">己／7月7日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">申月</span><b>⑦ファイター</b><span class=\"tg-row-chara\">庚／8月8日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">酉月</span><b>⑧カリスマ</b><span class=\"tg-row-chara\">辛／9月8日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">戌月</span><b>⑤ボス</b><span class=\"tg-row-chara\">戊／10月8日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">亥月</span><b>⑨パイオニア</b><span class=\"tg-row-chara\">壬／11月7日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">子月</span><b>⑩フィクサー</b><span class=\"tg-row-chara\">癸／12月7日ごろ〜</span></div>" +
+          "<div class=\"tg-row\"><span class=\"tg-row-no\">丑月</span><b>⑥ギバー</b><span class=\"tg-row-chara\">己／1月6日ごろ〜</span></div>" +
+          "<br>12か月が10タイプに収まるのは、<b>ボスが辰と戌（4月と10月）、ギバーが未と丑（7月と1月）</b>の2か月ぶんあるからです。<br>節入り日は年によって1日前後ずれるので、境目の生まれの方はこのアプリの計算結果が確実です。", html: true },
+        { type: "info", head: "🔢 表タイプ ── 60分類との関係", body: "表タイプは日干で決まりますが、<b>60分類No.の1の位</b>を見ても同じ答えになります（Noと日干が1対1のため）。<br><br>" +
           "1の位が <b>1</b> → ①リーダー（No.1・11・21・31・41・51）<br>" +
           "1の位が <b>2</b> → ②ムードメイカー（No.2・12・22・32・42・52）<br>" +
           "…<br>" +
@@ -4987,7 +5023,8 @@
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
         ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
-        ${c.tengetsu ? `<span class="rc-tengetsu">${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
+        ${c.tengetsu ? `<span class="rc-tengetsu">表${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
+        ${c.tengetsuUra ? `<span class="rc-tengetsu rc-tengetsu-ura">裏${c.tengetsuUra.mark}${escapeHtml(c.tengetsuUra.group)}</span>` : ""}
       </div>
       <div class="rc-badges">
         ${railBadgeHtml(c.rail)}
