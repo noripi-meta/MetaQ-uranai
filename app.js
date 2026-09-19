@@ -361,6 +361,35 @@
     { junName: "甲辰旬", branches: ["寅", "卯"], months: [2, 3] },
     { junName: "甲寅旬", branches: ["子", "丑"], months: [12, 1] },
   ];
+  // ===== 天月式10タイプ（60分類No.の1の位でグループが決まる。各グループ6人 × 10 = 60） =====
+  // No. = グループ番号 + 位置×10  （例 ファイター=7 → 7,17,27,37,47,57）
+  const TENGETSU = [
+    { no: 1,  mark: "①", name: "リーダー",     subs: ["ロマンチストな", "責任感が強い", "多芸多才で忙しい", "純粋で心優しい", "全力で突き進む", "独自路線の"] },
+    { no: 2,  mark: "②", name: "ムードメイカー", subs: ["愛される", "波瀾万丈な", "行動力がある", "人懐っこい", "小悪魔的な", "組織の要となる"] },
+    { no: 3,  mark: "③", name: "スター",       subs: ["突き進む", "気まぐれな", "人情味のある", "ユニークな", "パワフルな", "大物感あふれる"] },
+    { no: 4,  mark: "④", name: "ロマンチスト",  subs: ["夢みがちな", "お人よしな", "不思議の国の", "洗練された", "情熱を秘めた", "王者気質の"] },
+    { no: 5,  mark: "⑤", name: "ボス",         subs: ["勝気な", "熱い", "財運が強い", "義理人情の", "平和主義な", "圧倒的存在感の"] },
+    { no: 6,  mark: "⑥", name: "ギバー",       subs: ["繊細で太っ腹な", "人に好かれる", "最後までやり抜く", "実はかなり変わってる", "好感を持たれる", "信念が強すぎる"] },
+    { no: 7,  mark: "⑦", name: "ファイター",    subs: ["カッとなりやすい", "豪快な", "高い理想を持つ", "クールな", "正義の味方すぎる", "鋼のメンタルな"] },
+    { no: 8,  mark: "⑧", name: "カリスマ",      subs: ["控えめな", "風格漂う", "社交的な", "無邪気な", "夢みがちな", "孤高の"] },
+    { no: 9,  mark: "⑨", name: "パイオニア",    subs: ["知りたがりの", "気分屋すぎる", "スケールが大きい", "目立ちたがりな", "自由奔放な", "適応力が高い"] },
+    { no: 10, mark: "⑩", name: "フィクサー",    subs: ["計算高い", "内に激しい闘志を燃やす", "とにかく疑り深い", "母性と気配りの", "土壇場に強い", "本心を見せない"] },
+  ];
+  // 60分類No.(1〜60) → { mark, group, sub, full, pos }
+  function tengetsuOf(bunrui60No) {
+    const n = Number(bunrui60No);
+    if (!(n >= 1 && n <= 60)) return null;
+    const gi = (n - 1) % 10;          // グループ（1の位）
+    const pos = Math.floor((n - 1) / 10); // グループ内の位置 0〜5
+    const g = TENGETSU[gi];
+    return { mark: g.mark, group: g.name, groupNo: g.no, pos: pos, sub: g.subs[pos], full: g.subs[pos] + g.name };
+  }
+  // グループ内の6人（No.と天月式名）
+  function tengetsuSiblings(groupIdx) {
+    const g = TENGETSU[groupIdx];
+    return g.subs.map((s, i) => ({ no: g.no + i * 10, full: s + g.name }));
+  }
+
   function calcKobaku(bunrui60No) {
     const group = Math.floor((bunrui60No - 1) / 10); // 0〜5
     const k = KOBAKU[group];
@@ -533,6 +562,7 @@
       bunrui60_gz: dayGz,
       bunrui60_kanGroup: bunrui60Detail.kanGroup,
       bunrui60_charaName: bunrui60Detail.charaName,
+      tengetsu: tengetsuOf(bunrui60No),
       fukuNoKami,
       rail,
       dayGz, monthGz, yearGz,
@@ -772,6 +802,7 @@
       if (st) push(st.code, st.kanshi, st.tsuhensei, st.hitokoto, st.omoteura);
     }
     push(c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName);
+    if (c.tengetsu) push(c.tengetsu.group, c.tengetsu.full, "天月式" + c.tengetsu.group, c.tengetsu.mark + c.tengetsu.group);
     // 干支(四柱)
     push(c.yearGz, c.monthGz, c.dayGz, c.jichu && c.jichu.gz, c.dayStem, "日干" + (c.dayStem || ""));
     // レール
@@ -1145,6 +1176,22 @@
         <div class="abil-tops">${topCard("第一能力", first)}${topCard("第二能力", second)}</div>
         <div class="abil-bars">${bars}</div></div>`;
     }
+    // 天月式10タイプ(60分類No.の1の位でグループが決まる)
+    if (c.tengetsu) {
+      const t = c.tengetsu;
+      const sibs = tengetsuSiblings(t.groupNo - 1)
+        .map(x => x.no === c.bunrui60
+          ? `<b class="tg-me">${escapeHtml(x.full)}<small>No.${x.no}</small></b>`
+          : `<span class="tg-sib">${escapeHtml(x.full)}<small>No.${x.no}</small></span>`).join("");
+      body += `<div class="det-sec">
+        <div class="det-h">🌙 天月式10タイプ</div>
+        <div class="tg-head"><span class="tg-mark">${t.mark}</span><span class="tg-group">${escapeHtml(t.group)}</span></div>
+        <div class="tg-full">${escapeHtml(t.full)}</div>
+        <div class="det-row det-sub-row">60分類 No.${c.bunrui60}「${escapeHtml(c.bunrui60_charaName || "")}」／${escapeHtml(t.group)}の中の${t.pos + 1}番目</div>
+        <div class="det-row" style="margin-top:6px;"><span class="det-sub">同じ${escapeHtml(t.group)}の6人</span></div>
+        <div class="tg-sibs">${sibs}</div>
+      </div>`;
+    }
     // 60タイプパーソナリティ(日柱の干支=60分類No.から引く)
     if (c.bunrui60 && SIXTY_TYPES[c.bunrui60 - 1]) {
       const st = SIXTY_TYPES[c.bunrui60 - 1];
@@ -1293,6 +1340,7 @@
         <span class="rc-no">No.${String(c.bunrui60).padStart(2,"0")}</span>
         ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
+        ${c.tengetsu ? `<span class="rc-tengetsu">${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
       </div>
       <div class="rc-badges">
         ${railBadgeHtml(c.rail)}
@@ -1649,7 +1697,7 @@
   }
 
   // ---------- 出力用の共通行データ（CSV出力・スプレッドシート同期で共用） ----------
-  const RESULT_HEADERS = ["性","名","ニックネーム","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
+  const RESULT_HEADERS = ["性","名","ニックネーム","備考","グループ名","生年月日","時刻","レール","レール(本当の呼び方)","福の神No","福の神No(1つめ)","福の神No(2つめ)","福の神No(3つめ)","60分類No","60分類干支","干グループ","60分類キャラクター名","天月式グループ","天月式タイプ","本質グループ","本質(動物)","本質(十二運)","表面グループ","表面(動物)","表面(十二運)","意思グループ","意思(動物)","意思(十二運)","時柱(動物)","時柱(十二運)"];
   // 色付けに使う列位置は列名から求める(列を増減してもズレないように)
   const COL = {
     group: RESULT_HEADERS.indexOf("グループ名"),
@@ -1670,6 +1718,7 @@
       c.rail.rail, c.rail.tsuhensei,
       c.fukuNoKami.label, c.fukuNoKami.n1, c.fukuNoKami.n2, c.fukuNoKami.n3,
       c.bunrui60, c.bunrui60_gz, c.bunrui60_kanGroup, c.bunrui60_charaName,
+      c.tengetsu ? c.tengetsu.group : "", c.tengetsu ? c.tengetsu.full : "",
       GROUP_LABEL[c.honshitsu.group], c.honshitsu.animal, c.honshitsu.juniun,
       GROUP_LABEL[c.hyomen.group], c.hyomen.animal, c.hyomen.juniun,
       GROUP_LABEL[c.ishi.group], c.ishi.animal, c.ishi.juniun,
@@ -4116,6 +4165,27 @@
       ]
     },
     {
+      icon: "🌙", menu: "天月式10タイプ", title: "天月式10タイプ ── 60分類を10グループに束ねる",
+      intro: "個性心理學の60分類を、天月式では10のグループにまとめます。グループは60分類No.の「1の位」で決まり、各グループにちょうど6人ずつ入ります（10グループ × 6人 = 60）。",
+      items: [
+        { type: "info", head: "🔢 グループの決まり方", body: "むずかしい計算はいりません。<b>60分類No.の1の位を見るだけ</b>です。<br><br>" +
+          "1の位が <b>1</b> → ①リーダー（No.1・11・21・31・41・51）<br>" +
+          "1の位が <b>2</b> → ②ムードメイカー（No.2・12・22・32・42・52）<br>" +
+          "…<br>" +
+          "1の位が <b>0</b> → ⑩フィクサー（No.10・20・30・40・50・60）<br><br>" +
+          "グループの中での並びは、No.の小さい順に1番目〜6番目。たとえばNo.17なら「1の位が7だから<b>ファイター</b>」「17は上から2番目だから<b>豪快なファイター</b>」となります。<br><br>" +
+          "診断結果と図書館のカードには、この天月式タイプが自動で出ます。検索欄に「ファイター」と入れれば、そのグループの人だけを絞り込むこともできます。", html: true },
+        ...TENGETSU.map((g, gi) => ({
+          head: g.mark + " " + g.name,
+          html: true,
+          body: tengetsuSiblings(gi).map(x => {
+            const d = BUNRUI60_DETAIL[x.no] || {};
+            return `<div class="tg-row"><span class="tg-row-no">No.${x.no}</span><b>${x.full}</b><span class="tg-row-chara">${(d.charaName || "")}</span></div>`;
+          }).join("")
+        })),
+      ]
+    },
+    {
       icon: "⭐", menu: "十二運と12動物", title: "十二運 ── 運の強さ・エネルギーの形と12動物",
       intro: "十二運はエネルギーを「人の一生」にたとえた12ステージ。このアプリの本質・表面・意思・時柱に出てくる12動物は、この十二運と1対1で対応しています。",
       items: [
@@ -4917,6 +4987,7 @@
         <span class="rc-no">No.${String(c.bunrui60).padStart(2, "0")}</span>
         ${kanGroupChipHtml(c)}
         ${charaChipHtml(c.bunrui60_charaName)}
+        ${c.tengetsu ? `<span class="rc-tengetsu">${c.tengetsu.mark}${escapeHtml(c.tengetsu.group)}</span>` : ""}
       </div>
       <div class="rc-badges">
         ${railBadgeHtml(c.rail)}
