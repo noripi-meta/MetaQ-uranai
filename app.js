@@ -898,6 +898,20 @@
     });
   }
 
+  // 保存済みのcalcに、あとから増えたフィールドを補う。
+  // 診断結果はFirestoreに保存したcalcをそのまま使うため、新機能を足しても
+  // 再計算しないと反映されない。ここで描画前に埋めて、再計算なしで出るようにする。
+  function fillDerived(c) {
+    if (!c) return c;
+    if (!c.tengetsu && c.bunrui60) c.tengetsu = tengetsuOf(c.bunrui60);
+    if (!c.tengetsuUra && c.monthGz) c.tengetsuUra = tengetsuUraOf(String(c.monthGz).charAt(1));
+    return c;
+  }
+  function fillResults(arr) {
+    (arr || []).forEach(r => { if (r && r.calc) fillDerived(r.calc); });
+    return arr || [];
+  }
+
   function resultSearchText(r) {
     const c = r.calc || {};
     const gnames = resultGroupIds(r).map(id => { const g = getGroupById(id); return g ? g.name : ""; });
@@ -911,7 +925,7 @@
 
   // Firebase側からのリアルタイム更新を受け取り、メモリ上のキャッシュを更新して再描画する
   window.addEventListener("metaq:results-updated", (e) => {
-    results = e.detail.results || [];
+    results = fillResults(e.detail.results || []);
     dataReady = true;
     renderResults();
     refreshAllGroupUI();
@@ -1138,6 +1152,7 @@
   // 折りたたみ式の詳細(空亡・エネルギー・能力・リズム)。calc(c)から組み立てる。
   // 年空亡とリズムは「今日」に依存するため、保存せず表示のたびに計算する。
   function resultDetailHtml(c, personName) {
+    fillDerived(c);
     if (!c) return "";
     const now = new Date();
     let body = "";
